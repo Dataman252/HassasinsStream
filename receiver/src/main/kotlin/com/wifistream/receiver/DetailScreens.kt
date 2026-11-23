@@ -1,5 +1,15 @@
 package com.wifistream.receiver
 
+import androidx.compose.foundation.layout.height
+
+import androidx.compose.foundation.border
+
+import androidx.compose.ui.graphics.Brush
+
+import androidx.compose.foundation.background
+
+import androidx.compose.ui.graphics.Color
+
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -83,28 +93,61 @@ private fun DetailPage(backdrop: String?, onBack: () -> Unit, content: LazyListS
 
 @Composable
 private fun TitleHeader(info: TitleInfo) {
-    // One pane of glass floating over the title's own artwork.
-    Row(
-        modifier = Modifier.fillMaxWidth().glass(RoundedCornerShape(26.dp)).padding(20.dp),
-        horizontalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        if (info.poster != null) {
+    val tv = LocalIsTv.current
+    val bannerHeight = if (tv) 380.dp else 300.dp
+    val posterWidth = if (tv) 210.dp else 124.dp
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // A big banner: the title's wide artwork (or its poster), with the poster and name over it.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(bannerHeight)
+                .clip(RoundedCornerShape(26.dp))
+                .background(Panel),
+        ) {
             AsyncImage(
-                tmdbImage(info.poster, "w342"),
+                tmdbImage(info.backdrop ?: info.poster, "w1280"),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.width(if (LocalIsTv.current) 150.dp else 92.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(14.dp)),
+                alignment = Alignment.TopCenter,
+                modifier = Modifier.fillMaxSize(),
             )
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x3307080F), Color(0xF207080F)))))
+            Row(
+                Modifier.align(Alignment.BottomStart).padding(18.dp),
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                if (info.poster != null) {
+                    AsyncImage(
+                        tmdbImage(info.poster, "w500"),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .width(posterWidth)
+                            .aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(1.dp, Color(0x40FFFFFF), RoundedCornerShape(14.dp)),
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        info.title,
+                        style = if (tv) MaterialTheme.typography.displaySmall else MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(metaLine(info), color = Color(0xFFCBD5E1), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(info.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text(metaLine(info), color = Muted)
-            if (info.overview.isNotEmpty()) {
-                Text(info.overview, maxLines = 6, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-            }
-            if (info.cast.isNotEmpty()) {
-                Text("With ${info.cast.joinToString(", ")}", color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-            }
+        if (info.overview.isNotEmpty()) {
+            Text(info.overview, maxLines = if (tv) 4 else 6, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+        }
+        if (info.cast.isNotEmpty()) {
+            Text("With ${info.cast.joinToString(", ")}", color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2)
         }
     }
 }
@@ -212,15 +255,42 @@ fun ShowDetailScreen(vm: AppViewModel, screen: Screen.ShowDetail) {
         }
         itemsIndexed(episodes, key = { _, file -> file.key }) { _, file ->
             val p = vm.store.progress(file.key)
+            val info = names[file.parsed.episode]
+            val tv = LocalIsTv.current
             FocusRow(onClick = { vm.playVideo(file, show.episodes) }) {
-                Text("${file.parsed.episode}", color = Muted, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(28.dp))
+                // The episode's still from TMDB, or a picture from inside the video when there is none.
+                Box(
+                    Modifier
+                        .size(if (tv) 208.dp else 144.dp, if (tv) 117.dp else 81.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Panel),
+                ) {
+                    AsyncImage(
+                        tmdbImage(info?.still, "w300") ?: vm.stillOf(file, p?.positionMs?.takeIf { !p.finished }),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Text(
+                        "E${file.parsed.episode}",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
+                            .background(Color(0xB3000000), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                    ProgressEdge(p?.takeIf { !it.finished && it.durationMs > 0 }?.let { it.positionMs.toFloat() / it.durationMs })
+                }
                 Column(Modifier.weight(1f)) {
                     Text(
-                        names[file.parsed.episode]?.name?.ifEmpty { null } ?: "Episode ${file.parsed.episode}",
+                        info?.name?.ifEmpty { null } ?: "Episode ${file.parsed.episode}",
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    info?.overview?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
                     val state = when {
                         p == null -> null
                         p.finished -> "Watched"
@@ -229,8 +299,9 @@ fun ShowDetailScreen(vm: AppViewModel, screen: Screen.ShowDetail) {
                     }
                     val details = listOfNotNull(formatDuration(file.entry.media?.durationMs ?: 0), state).joinToString("  ·  ")
                     if (details.isNotEmpty()) Text(details, color = Muted, style = MaterialTheme.typography.bodySmall)
+                    // Under the text, so the episode name keeps the full width on a phone.
+                    file.entry.media?.let { Box(Modifier.padding(top = 4.dp)) { BadgeRow(it.badges()) } }
                 }
-                file.entry.media?.let { BadgeRow(it.badges()) }
             }
         }
     }
