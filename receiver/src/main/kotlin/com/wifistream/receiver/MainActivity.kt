@@ -7,6 +7,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
@@ -31,6 +33,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         model.onResume()
+        // Coming back to the app looks for a new version too (at most once an hour).
+        lifecycleScope.launch { Updater.check(applicationContext) }
     }
 
     override fun onStop() {
@@ -71,8 +75,6 @@ class MainActivity : ComponentActivity() {
             ReceiverTheme {
                 // Created before the intro so finding the other device starts while it plays.
                 val vm: AppViewModel = viewModel()
-                // New versions from GitHub: looked for once a day, offered on Home.
-                androidx.compose.runtime.LaunchedEffect(Unit) { Updater.check(applicationContext) }
                 AppTheme.systemDark = androidx.compose.foundation.isSystemInDarkTheme()
                 val playing = vm.backStack.last().let { it is Screen.Player || it is Screen.CompatPlayer }
                 AppTheme.forceDark = playing

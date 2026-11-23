@@ -404,6 +404,10 @@ fun ChipButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier,
 fun frameUrl(fileUrl: String, ms: Long): String =
     Link.map(fileUrl).replace(WifiStream.Path.FILE + "?", WifiStream.Path.FRAME + "?") + "&t=" + (ms.coerceAtLeast(0) / 10_000 * 10_000)
 
+/** Every picture the sharing phone already has for a video, in one download. */
+fun previewsUrl(fileUrl: String): String =
+    Link.map(fileUrl).replace(WifiStream.Path.FILE + "?", WifiStream.Path.PREVIEWS + "?")
+
 fun hzLabel(hz: Float): String = if (hz >= 1000) "%.1f kHz".format(hz / 1000).replace(".0 ", " ") else "${hz.toInt()} Hz"
 
 /**

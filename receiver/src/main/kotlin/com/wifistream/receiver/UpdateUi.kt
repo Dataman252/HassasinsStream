@@ -85,7 +85,7 @@ fun UpdateRow() {
                     UpdateState.UpToDate -> "Version ${Updater.installedVersion(context)} is the newest."
                     is UpdateState.Available -> "Version ${state.info.version} is available: see the card on Home."
                     is UpdateState.Failed -> state.message
-                    else -> "Version ${Updater.installedVersion(context)}. Checks by itself once a day."
+                    else -> "Version ${Updater.installedVersion(context)}. Checks by itself when the app opens."
                 },
                 color = Muted,
                 style = MaterialTheme.typography.bodySmall,

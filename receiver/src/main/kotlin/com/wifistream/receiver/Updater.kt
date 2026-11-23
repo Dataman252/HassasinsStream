@@ -49,7 +49,8 @@ object Updater {
     private const val REPO = "Dataman252/HassasinsStream"
     private const val APK_NAME = "HassasinStream.apk"
     private const val PREFS = "updates"
-    private const val CHECK_EVERY_MS = 24 * 3_600_000L
+    /** Looked for each time the app opens, but not more than once an hour. */
+    private const val CHECK_EVERY_MS = 3_600_000L
     private const val ACTION_RESULT = "com.wifistream.receiver.UPDATE_RESULT"
 
     var state by mutableStateOf<UpdateState>(UpdateState.Idle)

@@ -30,6 +30,12 @@ object WifiStream {
         /** GET ?root=<id>&path=<video file>&t=<milliseconds> -> a small JPEG of the picture near that time */
         const val FRAME = "/api/frame"
 
+        /**
+         * GET ?root=<id>&path=<video file> -> every seek-bar picture the sharing device has already made
+         * for that video, in one go: records of an 8-byte time (ms), a 4-byte length and the JPEG bytes.
+         */
+        const val PREVIEWS = "/api/previews"
+
         /** GET ?recheck=1 -> [KeyStatus]: whether the sharing device's TMDB and OpenSubtitles keys work */
         const val KEYS = "/api/keys"
 

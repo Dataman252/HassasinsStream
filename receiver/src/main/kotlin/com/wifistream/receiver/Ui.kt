@@ -307,7 +307,7 @@ fun ThumbProgressBar(modifier: Modifier = Modifier) {
                 trackColor = Color(0x33FFFFFF),
             )
             Text(
-                "Preparing previews ${(p.fraction * 100).toInt()}%  ·  ${p.title}",
+                "Copying previews ${(p.fraction * 100).toInt()}%  ·  ${p.title}",
                 color = Color.White,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,

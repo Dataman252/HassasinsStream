@@ -104,6 +104,14 @@ class FileServer(
                     val picture = file?.takeIf { it.isFile }?.let { frame(root, it, at) }
                     if (picture == null) call.respond(HttpStatusCode.NotFound) else call.respondBytes(picture, ContentType.Image.JPEG)
                 }
+                get(WifiStream.Path.PREVIEWS) {
+                    val root = storage.root(call.request.queryParameters["root"].orEmpty())
+                    val file = root?.let { storage.resolve(it, call.request.queryParameters["path"].orEmpty()) }
+                    if (root == null || file == null || !file.isFile) return@get call.respond(HttpStatusCode.NotFound)
+                    // The pack file is already in the right record format; a stale one is discarded on open.
+                    val packed = withContext(Dispatchers.IO) { runCatching { pack(root, file).file }.getOrNull() }
+                    if (packed == null || !packed.isFile) call.respond(HttpStatusCode.NotFound) else call.respondFile(packed)
+                }
                 get(WifiStream.Path.KEYS) {
                     call.respond(keys.check(force = call.request.queryParameters["recheck"] == "1"))
                 }

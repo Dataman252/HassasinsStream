@@ -198,6 +198,38 @@ object Thumbs {
         }
     }.getOrDefault(false)
 
+    /**
+     * Copies every picture the sharing phone has already made for [target] in one download, instead of
+     * asking for them one by one. Returns how many new pictures were saved; 0 when the phone has none
+     * yet or is an older version without this.
+     */
+    private fun bulkCopy(target: ThumbTarget, dir: File): Int = runCatching {
+        http.newCall(Request.Builder().url(previewsUrl(target.fileUrl)).build()).execute().use { response ->
+            if (!response.isSuccessful) return@use 0
+            val input = java.io.DataInputStream(java.io.BufferedInputStream(response.body!!.byteStream()))
+            var saved = 0
+            while (true) {
+                val time = try { input.readLong() } catch (e: java.io.EOFException) { break }
+                val length = input.readInt()
+                if (length < 0 || length > 2_000_000) break
+                val bytes = ByteArray(length)
+                input.readFully(bytes)
+                // The first record names the film, not a picture.
+                if (time < 0 || length == 0) continue
+                val out = File(dir, "$time.jpg")
+                if (!out.isFile) {
+                    val temp = File(dir, "$time.part")
+                    temp.writeBytes(bytes)
+                    if (temp.renameTo(out)) {
+                        saved++
+                        sizeBytes += length
+                    }
+                }
+            }
+            saved
+        }
+    }.getOrDefault(0)
+
     private fun restart() {
         if (!::root.isInitialized) return
         job?.cancel()
@@ -222,6 +254,16 @@ object Thumbs {
             val counter = java.util.concurrent.atomic.AtomicInteger(done)
             for (target in queue) {
                 val dir = folder(target.key).apply { mkdirs() }
+                // First everything the phone already has, in one go; then only the gaps, one by one.
+                if (steps(target.durationMs).any { !File(dir, "$it.jpg").isFile }) {
+                    while ((holdOff || offline) && isActive) delay(500)
+                    progress = ThumbProgress(counter.get(), total, target.title)
+                    val copied = bulkCopy(target, dir)
+                    if (copied > 0) {
+                        counter.set(queue.sumOf { t -> coverage(t.key, t.durationMs).count { it } })
+                        version++
+                    }
+                }
                 kotlinx.coroutines.coroutineScope {
                     for (at in steps(target.durationMs)) {
                         if (!isActive) return@coroutineScope
