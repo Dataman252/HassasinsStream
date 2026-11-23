@@ -124,7 +124,7 @@ private fun TabBar(vm: AppViewModel, selected: Tab, onSelect: (Tab) -> Unit) {
 
 /** Re-reads the phone's library; spins while that is happening. */
 @Composable
-internal fun RefreshButton(busy: Boolean, modifier: Modifier, onClick: () -> Unit) {
+internal fun RefreshButton(busy: Boolean, modifier: Modifier, size: androidx.compose.ui.unit.Dp = 44.dp, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val spin = androidx.compose.animation.core.rememberInfiniteTransition(label = "refresh")
@@ -136,7 +136,7 @@ internal fun RefreshButton(busy: Boolean, modifier: Modifier, onClick: () -> Uni
     )
     Box(
         modifier
-            .size(44.dp)
+            .size(size)
             .clip(RoundedCornerShape(50))
             .then(if (focused) Modifier.background(Amber) else Modifier.glass(RoundedCornerShape(50)))
             .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick),
@@ -146,7 +146,7 @@ internal fun RefreshButton(busy: Boolean, modifier: Modifier, onClick: () -> Uni
             painterResource(R.drawable.ic_refresh),
             contentDescription = "Refresh library",
             tint = if (focused) OnAccent else Ink,
-            modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = if (busy) angle else 0f },
+            modifier = Modifier.size(size / 2).graphicsLayer { rotationZ = if (busy) angle else 0f },
         )
     }
 }

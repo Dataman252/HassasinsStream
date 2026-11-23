@@ -117,56 +117,56 @@ fun SideRail(vm: AppViewModel, selected: Tab, onSelect: (Tab) -> Unit) {
     Column(
         Modifier
             .fillMaxHeight()
-            .width(160.dp)
-            // Light enough that the artwork shows through, dark enough to read the menu.
-            .background(Brush.horizontalGradient(listOf(Color(0x99000000), Color(0x40000000))))
-            // Short screens (a phone on its side) scroll the menu rather than lose Settings off the bottom.
-            .verticalScroll(androidx.compose.foundation.rememberScrollState())
-            .padding(horizontal = 10.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+            .width(136.dp)
+            // Mostly see-through: a light shade behind the words, fading into the artwork.
+            .background(Brush.horizontalGradient(listOf(Color(0x66000000), Color(0x14000000))))
+            .padding(horizontal = 8.dp, vertical = 10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)) {
-            BrandMark(26.dp)
+        // The sharing device on top, with Refresh beside it.
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
             Text(
-                "  HASSASIN",
-                fontFamily = LayoutDisplayFont,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.5.sp,
+                vm.connection?.info?.name ?: "Not connected",
                 color = Color.White,
-                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(start = 6.dp),
             )
+            RefreshButton(vm.refreshing, Modifier, size = 34.dp) { vm.refreshLibrary(rematch = true, recheckKeys = true) }
         }
-        Tab.entries.forEach { tab ->
-            val interaction = remember { MutableInteractionSource() }
-            val focused by interaction.collectIsFocusedAsState()
-            val on = tab == selected
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (focused) Accent else Color.Transparent)
-                    .clickable(interactionSource = interaction, indication = LocalIndication.current) { onSelect(tab) }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(width = 3.dp, height = 18.dp).background(if (on && !focused) Accent else Color.Transparent))
-                Text(
-                    "  " + tab.label.uppercase(),
-                    fontFamily = LayoutDisplayFont,
-                    fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
-                    letterSpacing = 1.2.sp,
-                    fontSize = 14.sp,
-                    color = when {
-                        focused -> OnAccent
-                        on -> Color.White
-                        else -> Color(0xFFA8A29E)
-                    },
-                )
+        // The menu shares out the height that is left, so it always fits without scrolling.
+        Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.SpaceEvenly) {
+            Tab.entries.forEach { tab ->
+                val interaction = remember { MutableInteractionSource() }
+                val focused by interaction.collectIsFocusedAsState()
+                val on = tab == selected
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (focused) Accent else Color.Transparent)
+                        .clickable(interactionSource = interaction, indication = LocalIndication.current) { onSelect(tab) }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(width = 3.dp, height = 16.dp).background(if (on && !focused) Accent else Color.Transparent))
+                    Text(
+                        "  " + tab.label.uppercase(),
+                        fontFamily = LayoutDisplayFont,
+                        fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+                        letterSpacing = 1.sp,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        color = when {
+                            focused -> OnAccent
+                            on -> Color.White
+                            else -> Color(0xFFD6D3D1)
+                        },
+                    )
+                }
             }
         }
-        Spacer(Modifier.height(12.dp))
-        Text(vm.connection?.info?.name.orEmpty(), color = Color(0xFFA8A29E), fontSize = 12.sp, maxLines = 1, modifier = Modifier.padding(start = 12.dp))
-        RefreshButton(vm.refreshing, Modifier.padding(start = 4.dp, top = 8.dp)) { vm.refreshLibrary(rematch = true, recheckKeys = true) }
     }
 }
 
