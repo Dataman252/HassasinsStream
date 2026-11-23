@@ -20,6 +20,11 @@
 
 ---
 
+<p align="center">
+  <a href="https://github.com/Dataman252/HassasinsStream/releases/download/v1.4/hassasins-stream-hype.mp4"><img src="docs/video/poster.jpg" alt="Watch the 30-second trailer" width="80%"></a><br>
+  <sub>▶ <a href="https://github.com/Dataman252/HassasinsStream/releases/download/v1.4/hassasins-stream-hype.mp4">Watch the 30-second trailer</a></sub>
+</p>
+
 ## ✨ Why it's different
 
 <table>
@@ -82,6 +87,9 @@ When a new version is out, the app updates first: one tap downloads it, and Andr
 **2. Share from the phone with the videos.** Open the app › **Share this device** › **Choose folders** › tap **Sharing is off** to turn it on.
 
 **3. Watch.** Open the app on the TV. It finds the phone by itself, or tap **Scan TV code** on the phone and point it at the code on the TV.
+
+> [!IMPORTANT]
+> Android or **Google Play Protect** may say it hasn't seen the app before and offer to scan it. That's normal for apps from outside the Play Store: choose **Scan app** (or **Install anyway**).
 
 > [!TIP]
 > You only download the APK once. After that the app keeps itself on the newest version. The first time, Android asks you to allow **Install unknown apps** for Hassasin's Stream.

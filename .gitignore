@@ -11,3 +11,6 @@ APKs/
 *-keys.json
 *.keystore
 *.jks
+docs/video/*.png
+docs/video/c*.mp4
+docs/video/*.mp4
