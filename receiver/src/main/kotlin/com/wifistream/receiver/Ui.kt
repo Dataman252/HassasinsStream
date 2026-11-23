@@ -285,7 +285,7 @@ fun LinkBanner(vm: AppViewModel, modifier: Modifier = Modifier) {
 fun ThumbProgressBar(modifier: Modifier = Modifier) {
     val p = Thumbs.progress
     androidx.compose.animation.AnimatedVisibility(
-        visible = p != null && p.total > 0,
+        visible = p != null && p.total > 0 && !Thumbs.offline,
         enter = androidx.compose.animation.fadeIn(),
         exit = androidx.compose.animation.fadeOut(),
         modifier = modifier.padding(top = 4.dp),

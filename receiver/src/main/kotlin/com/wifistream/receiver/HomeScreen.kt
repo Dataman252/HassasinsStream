@@ -257,6 +257,7 @@ private fun HomeTab(vm: AppViewModel, home: Screen.Home) {
         lib.error?.let { message ->
             item { Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = screenMargin())) }
         }
+        item(key = "update") { UpdateCard(Modifier.padding(horizontal = screenMargin())) }
         val heroFocus = Modifier.restoreFocus(home, HERO, restore)
         when (AppTheme.layout) {
             AppLayout.GLASS -> if (heroInfo != null) item(key = "hero") { Hero(vm, heroInfo, heroFile, heroFocus) }
@@ -816,6 +817,7 @@ private fun SettingsTab(vm: AppViewModel) {
                 }
             }
         }
+        if (shows(SettingsSection.ABOUT)) item { UpdateRow() }
         if (shows(SettingsSection.ABOUT)) item {
             Spacer(Modifier.height(8.dp))
             Text(
@@ -875,7 +877,7 @@ enum class SettingsSection(val label: String, val detail: String, val icon: Int)
     LIBRARY("Library", "Refresh, watch history", R.drawable.ic_history),
     DEVICE("This device", "What it can play", R.drawable.ic_tv),
     SOURCES("Sources", "Phones to play from", R.drawable.ic_phone),
-    ABOUT("About", "Credits", R.drawable.ic_info),
+    ABOUT("About", "Version, updates, credits", R.drawable.ic_info),
 }
 
 /** The phone version of the settings menu: one compact card per category. */

@@ -15,8 +15,8 @@ android {
         applicationId = "com.wifistream.receiver"
         minSdk = 28
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.2"
+        versionCode = 6
+        versionName = "1.3"
         // ARM only: every phone and TV this runs on. Leaving out the emulator's x86 keeps the APK smaller.
         ndk { abiFilters += setOf("arm64-v8a", "armeabi-v7a") }
     }
@@ -85,6 +85,9 @@ dependencies {
     implementation(libs.coil.compose)
     // Software decoding for audio the device cannot play itself (DTS, TrueHD, AC3 on phones).
     implementation(libs.jellyfin.media3.ffmpeg)
+    // QR codes: drawn on the TV (ZXing), scanned on the phone (Google's scanner, no camera permission needed).
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
 }

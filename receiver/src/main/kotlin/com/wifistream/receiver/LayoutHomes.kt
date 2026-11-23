@@ -20,11 +20,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -117,10 +119,12 @@ fun SideRail(vm: AppViewModel, selected: Tab, onSelect: (Tab) -> Unit) {
             .fillMaxHeight()
             .width(210.dp)
             .background(Brush.horizontalGradient(listOf(Color(0xE6000000), Color(0x99000000))))
-            .padding(horizontal = 16.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            // Short screens (a phone on its side) scroll the menu rather than lose Settings off the bottom.
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp, bottom = 20.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)) {
             BrandMark(30.dp)
             Text(
                 "  HASSASIN",
@@ -141,7 +145,7 @@ fun SideRail(vm: AppViewModel, selected: Tab, onSelect: (Tab) -> Unit) {
                     .clip(RoundedCornerShape(6.dp))
                     .background(if (focused) Accent else Color.Transparent)
                     .clickable(interactionSource = interaction, indication = LocalIndication.current) { onSelect(tab) }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.size(width = 3.dp, height = 18.dp).background(if (on && !focused) Accent else Color.Transparent))
@@ -158,7 +162,7 @@ fun SideRail(vm: AppViewModel, selected: Tab, onSelect: (Tab) -> Unit) {
                 )
             }
         }
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(12.dp))
         Text(vm.connection?.info?.name.orEmpty(), color = Color(0xFFA8A29E), fontSize = 12.sp, maxLines = 1, modifier = Modifier.padding(start = 12.dp))
         RefreshButton(vm.refreshing, Modifier.padding(start = 4.dp, top = 8.dp)) { vm.refreshLibrary(rematch = true, recheckKeys = true) }
     }
@@ -169,7 +173,8 @@ fun SideRail(vm: AppViewModel, selected: Tab, onSelect: (Tab) -> Unit) {
 fun SpotlightHero(vm: AppViewModel, info: TitleInfo, resumeFile: VideoFile?, playModifier: Modifier) {
     val base = LocalHeroHeight.current
     val height = base?.let { (it * 1.15f).coerceAtMost(560.dp) } ?: 420.dp
-    Box(Modifier.fillMaxWidth().height(height)) {
+    // At least this tall, and taller when a long title needs it, so the buttons are never squeezed out.
+    Box(Modifier.fillMaxWidth().heightIn(min = height)) {
         AsyncImage(
             tmdbImage(info.backdrop ?: info.poster, "w1280"),
             contentDescription = null,
@@ -180,7 +185,7 @@ fun SpotlightHero(vm: AppViewModel, info: TitleInfo, resumeFile: VideoFile?, pla
         Box(Modifier.matchParentSize().background(Brush.horizontalGradient(listOf(Color(0xF20C0A09), Color(0x990C0A09), Color.Transparent))))
         Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, Night))))
         Column(
-            Modifier.align(Alignment.BottomStart).padding(start = screenMargin(), end = screenMargin(), bottom = 20.dp).widthIn(max = 640.dp),
+            Modifier.align(Alignment.BottomStart).padding(start = screenMargin(), end = screenMargin(), top = 24.dp, bottom = 20.dp).widthIn(max = 720.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TileLabel(if (resumeFile != null) "Continue" else "Featured", Accent)

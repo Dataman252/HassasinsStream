@@ -91,6 +91,9 @@ object Thumbs {
     /** True while the player is waiting for data: picture downloads step aside. */
     @Volatile var holdOff = false
 
+    /** True while the sharing phone cannot be reached: copying pauses and the progress bar hides. */
+    var offline by mutableStateOf(false)
+
     fun init(context: Context) {
         if (::root.isInitialized) return
         root = File(context.filesDir, "thumbs")
@@ -224,7 +227,7 @@ object Thumbs {
                         if (!isActive) return@coroutineScope
                         val out = File(dir, "$at.jpg")
                         if (out.isFile) continue
-                        while (holdOff && isActive) delay(500)
+                        while ((holdOff || offline) && isActive) delay(500)
                         gate.acquire()
                         progress = ThumbProgress(counter.get(), total, target.title)
                         launch {

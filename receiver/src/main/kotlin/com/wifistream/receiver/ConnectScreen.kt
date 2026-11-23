@@ -55,6 +55,8 @@ fun ConnectScreen(vm: AppViewModel) {
         ScreenTitle("Hassasin's Stream", onBack = if (vm.backStack.size > 1) vm::back else null)
         Text("Choose the device to play from", color = Muted, style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.height(4.dp))
+        // TVs show a code for the phone to scan: no typing, and it works without a router too.
+        if (LocalIsTv.current) TvPairCard(vm)
 
         if (found.isEmpty()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -101,7 +103,11 @@ fun ConnectScreen(vm: AppViewModel) {
         if (canShareFromThisDevice()) {
             Spacer(Modifier.height(16.dp))
             Text("Are the videos on this device?", color = Muted)
-            PillButton("Share this device", onClick = { vm.open(Screen.Share) })
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PillButton("Share this device", onClick = { vm.open(Screen.Share) })
+            }
+            Text("Watching on a TV? Scan the code it shows to connect it to this phone.", color = Muted)
+            ScanTvButton()
         }
     }
 }

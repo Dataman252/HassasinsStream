@@ -190,6 +190,19 @@ fun ShareScreen(onBack: () -> Unit, onKeys: (() -> Unit)? = null, keys: ApiKeys?
         if (status.running) {
             item { HealthCard(status.temperatureC, status.previewsPaused) }
         }
+        if (setup.allFiles && shared.isNotEmpty()) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Connect a TV", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
+                    Text(
+                        "Open Hassasin's Stream on the TV and scan the code it shows. Works on the same Wi-Fi, or with the TV's direct link when there is no router.",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    ScanTvButton(primary = true)
+                }
+            }
+        }
         item { LockChecklist(battery = setup.battery, onBattery = {
             @Suppress("BatteryLife")
             context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, appUri))

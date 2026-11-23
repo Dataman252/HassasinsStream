@@ -71,6 +71,8 @@ class MainActivity : ComponentActivity() {
             ReceiverTheme {
                 // Created before the intro so finding the other device starts while it plays.
                 val vm: AppViewModel = viewModel()
+                // New versions from GitHub: looked for once a day, offered on Home.
+                androidx.compose.runtime.LaunchedEffect(Unit) { Updater.check(applicationContext) }
                 AppTheme.systemDark = androidx.compose.foundation.isSystemInDarkTheme()
                 val playing = vm.backStack.last().let { it is Screen.Player || it is Screen.CompatPlayer }
                 AppTheme.forceDark = playing

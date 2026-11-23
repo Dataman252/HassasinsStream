@@ -219,6 +219,8 @@ class ShareService : Service() {
         networkCallback = null
         screenReceiver = null
         discovery?.unregister()
+        // Leave the TV's direct network too, if the phone joined one by scanning its code.
+        com.wifistream.receiver.DirectLink.release(applicationContext)
         scope.cancel()
         scanner?.save()
         val running = server

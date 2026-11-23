@@ -257,6 +257,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     misses++
                     if (misses >= 2 && linkState != LinkState.LOST) {
                         linkState = LinkState.LOST
+                        Thumbs.offline = true
                         followPhone()
                     }
                     if (misses >= 2 && following?.isActive != true) followPhone()
@@ -271,6 +272,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val driveGone = knownRoots.isNotEmpty() && !now.containsAll(knownRoots)
                 linkState = if (driveGone) LinkState.DRIVE_MISSING else LinkState.OK
                 Thumbs.holdOff = driveGone
+                Thumbs.offline = false
                 knownRoots = knownRoots + now
                 // The sharing phone's files changed (a new episode was copied in): re-read on our own.
                 val filesChanged = knownStamp != 0L && info.libraryStamp != 0L && info.libraryStamp != knownStamp
