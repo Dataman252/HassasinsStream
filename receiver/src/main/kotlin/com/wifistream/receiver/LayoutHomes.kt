@@ -117,22 +117,23 @@ fun SideRail(vm: AppViewModel, selected: Tab, onSelect: (Tab) -> Unit) {
     Column(
         Modifier
             .fillMaxHeight()
-            .width(210.dp)
-            .background(Brush.horizontalGradient(listOf(Color(0xE6000000), Color(0x99000000))))
+            .width(160.dp)
+            // Light enough that the artwork shows through, dark enough to read the menu.
+            .background(Brush.horizontalGradient(listOf(Color(0x99000000), Color(0x40000000))))
             // Short screens (a phone on its side) scroll the menu rather than lose Settings off the bottom.
             .verticalScroll(androidx.compose.foundation.rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 16.dp),
+            .padding(horizontal = 10.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)) {
-            BrandMark(30.dp)
+            BrandMark(26.dp)
             Text(
                 "  HASSASIN",
                 fontFamily = LayoutDisplayFont,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp,
+                letterSpacing = 1.5.sp,
                 color = Color.White,
-                fontSize = 18.sp,
+                fontSize = 15.sp,
             )
         }
         Tab.entries.forEach { tab ->
@@ -153,7 +154,8 @@ fun SideRail(vm: AppViewModel, selected: Tab, onSelect: (Tab) -> Unit) {
                     "  " + tab.label.uppercase(),
                     fontFamily = LayoutDisplayFont,
                     fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
-                    letterSpacing = 1.5.sp,
+                    letterSpacing = 1.2.sp,
+                    fontSize = 14.sp,
                     color = when {
                         focused -> OnAccent
                         on -> Color.White
