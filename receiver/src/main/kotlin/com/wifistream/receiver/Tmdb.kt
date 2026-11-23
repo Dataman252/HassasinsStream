@@ -75,20 +75,68 @@ private fun JsonObject.arr(key: String): List<JsonObject> =
 class Tmdb(private val base: () -> String?) {
     private val gate = Semaphore(4)
 
-    /** Returns ("movie" | "tv", id) of the best match, or null when TMDB knows nothing by that name. */
+    /**
+     * Returns ("movie" | "tv", id) of the best match, or null when TMDB knows nothing by that name.
+     * Candidates from a few searches are scored by how closely the title and the year agree, so a
+     * re-release ("Avengers Endgame: Encore", 2026) is not mistaken for the original film (2019)
+     * just because the file name has no colon.
+     */
     suspend fun search(name: ParsedName): Pair<String, Int>? {
         val type = if (name.isEpisode) "tv" else "movie"
-        suspend fun query(year: Int?): Int? {
+        val yearKey = if (type == "movie") "year" else "first_air_date_year"
+        val dateKey = if (type == "movie") "release_date" else "first_air_date"
+        val titleKey = if (type == "movie") "title" else "name"
+        suspend fun query(text: String, year: Int?): List<JsonObject> {
             val params = buildList {
-                add("query" to name.title)
-                if (year != null) add((if (type == "movie") "year" else "first_air_date_year") to year.toString())
+                add("query" to text)
+                if (year != null) add(yearKey to year.toString())
             }
-            return get("search/$type", params).arr("results").firstOrNull()?.int("id")
+            return get("search/$type", params).arr("results").take(8)
         }
-        // A wrong year in a file name should not hide an otherwise good match.
-        val id = query(name.year) ?: if (name.year != null) query(null) else null
-        return id?.let { type to it }
+        val words = name.title.split(' ').filter { it.isNotBlank() }
+        val candidates = LinkedHashMap<Int, JsonObject>()
+        fun addAll(list: List<JsonObject>) = list.forEach { o ->
+            o.int("id")?.let { id ->
+                candidates.putIfAbsent(id, o)
+                // Some new entries show artwork in search results before their own page has any.
+                o.str("poster_path")?.let { searchPosters.putIfAbsent(id, it) }
+                o.str("backdrop_path")?.let { searchBackdrops.putIfAbsent(id, it) }
+            }
+        }
+        addAll(query(name.title, name.year))
+        if (name.year != null) {
+            // Punctuation in the real title (a colon, a dash) can hide it from a search with the year:
+            // try the shorter name with the year too, then the full name without it.
+            if (words.size > 2) addAll(query(words.dropLast(1).joinToString(" "), name.year))
+            addAll(query(name.title, null))
+        }
+        if (candidates.isEmpty()) return null
+        val wanted = normalTitle(name.title)
+        val best = candidates.values.withIndex().maxByOrNull { (rank, o) ->
+            val title = normalTitle(o.str(titleKey).orEmpty())
+            val original = normalTitle(o.str(if (type == "movie") "original_title" else "original_name").orEmpty())
+            val year = o.str(dateKey)?.take(4)?.toIntOrNull()
+            var score = 0.0
+            if (title == wanted || original == wanted) score += 6
+            else if (title.startsWith(wanted) || wanted.startsWith(title)) score += 2
+            val fileYear = name.year
+            if (fileYear != null && year != null) {
+                score += when (kotlin.math.abs(year - fileYear)) {
+                    0 -> 5.0
+                    1 -> 3.0
+                    else -> -2.0
+                }
+            }
+            // TMDB's own order breaks ties.
+            score - rank * 0.05
+        }?.value ?: return null
+        return best.int("id")?.let { type to it }
     }
+
+    private val searchPosters = java.util.concurrent.ConcurrentHashMap<Int, String>()
+    private val searchBackdrops = java.util.concurrent.ConcurrentHashMap<Int, String>()
+
+    private fun normalTitle(s: String) = s.lowercase().replace(Regex("[^a-z0-9]"), "")
 
     /** Up to [limit] titles for a typed search, for choosing the right one by hand. */
     suspend fun searchMany(query: String, type: String, limit: Int = 6): List<TitleInfo> =
@@ -119,8 +167,8 @@ class Tmdb(private val base: () -> String?) {
             title = o.str(if (movie) "title" else "name").orEmpty(),
             year = o.str(if (movie) "release_date" else "first_air_date")?.take(4)?.takeIf { it.length == 4 },
             overview = o.str("overview").orEmpty(),
-            poster = o.str("poster_path"),
-            backdrop = o.str("backdrop_path"),
+            poster = o.str("poster_path") ?: searchPosters[id],
+            backdrop = o.str("backdrop_path") ?: searchBackdrops[id],
             rating = o.dbl("vote_average") ?: 0.0,
             runtimeMin = if (movie) o.int("runtime") else (o["episode_run_time"] as? JsonArray)?.firstOrNull()?.jsonPrimitive?.intOrNull,
             genres = o.arr("genres").mapNotNull { it.str("name") },

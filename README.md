@@ -210,9 +210,28 @@ cd HassasinsStream
 
 The app lives in `receiver/` (it is both the sharing phone and the player); the shared message format is in `protocol/`.
 
+## ☕ Support the developer
+
+Hassasin's Stream is free, with no ads and no accounts. If it makes your movie nights better, you can buy the developer a coffee over **UPI** (PhonePe, Google Pay, Paytm, BHIM or any UPI app).
+
+<p align="center">
+  <img src="docs/upi-qr.png" alt="UPI QR code to support the developer" width="260"><br>
+  <sub>Scan with any UPI app · UPI ID <code>7016587945-2@axl</code></sub>
+</p>
+
+The app also offers this once per new version (**Settings › About › Support the developer** anytime), with **Not now** and **Don't ask again**.
+
+## 👤 Author
+
+**Hassan Khan** · [hkhan25295@gmail.com](mailto:hkhan25295@gmail.com)
+
+Ideas, bug reports and feedback are welcome, by email or through [GitHub issues](../../issues).
+
 ## 🙏 Credits
 
 <img src="docs/logo.svg" width="40" align="right" alt="Hassasin's Stream logo">
+
+- Designed and built by **Hassan Khan** ([hkhan25295@gmail.com](mailto:hkhan25295@gmail.com)).
 
 - Film and show information and images from **[TMDB](https://www.themoviedb.org)**. *This product uses the TMDB API but is not endorsed or certified by TMDB.*
 - Show information from **[TVmaze](https://www.tvmaze.com)** (CC BY-SA) and film summaries from **[Wikipedia](https://www.wikipedia.org)** (CC BY-SA).

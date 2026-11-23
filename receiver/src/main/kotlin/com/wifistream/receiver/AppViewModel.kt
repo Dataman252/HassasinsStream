@@ -528,9 +528,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * A film matched by the older matcher to a title whose year is far from the file's year
+     * (a 2026 re-release matched to the 2019 film): searched again once with the better matcher.
+     */
+    private fun needsRecheck(group: String, match: String): Boolean {
+        if (store.isManual(group) || !match.startsWith("movie:")) return false
+        val title = store.title(match) ?: return false
+        // A match with no picture at all: look once more (search results can carry art the page lacks).
+        if (title.poster == null && title.backdrop == null && !store.wasRechecked("art|$group")) {
+            store.markRechecked("art|$group")
+            return true
+        }
+        if (store.wasRechecked(group)) return false
+        val fileYear = group.substringAfterLast('|').toIntOrNull() ?: return false
+        val titleYear = title.year?.toIntOrNull() ?: return false
+        if (kotlin.math.abs(fileYear - titleYear) <= 1) return false
+        store.markRechecked(group)
+        return true
+    }
+
     private suspend fun matchTitles() {
         val tmdbReady = usable(remoteKeys?.tmdb)
-        val unknown = videos.filter { it.looksLikeTitle }.groupBy { it.group }.filterKeys { store.match(it) == null }
+        val unknown = videos.filter { it.looksLikeTitle }.groupBy { it.group }.filterKeys { group ->
+            val match = store.match(group)
+            match == null || needsRecheck(group, match)
+        }
         coroutineScope {
             unknown.forEach { (group, files) ->
                 launch {
@@ -544,7 +567,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         if (!matchFree(group, files.first().parsed)) store.setMatch(group, "")
                     } else {
                         val key = "${hit.first}:${hit.second}"
-                        if (store.title(key) == null) {
+                        val known = store.title(key)
+                        if (known == null || (known.poster == null && known.backdrop == null)) {
                             store.putTitle(runCatching { tmdb.details(hit.first, hit.second) }.getOrElse { return@launch })
                         }
                         store.setMatch(group, key)
@@ -734,7 +758,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 candidateSeasons.remove(info.key)?.forEach { (season, episodes) -> store.putSeason("${info.key}:$season", episodes) }
             }
             // "-" marks a choice made by hand, so Refresh never matches these files again by itself.
-            groups.forEach { store.setMatch(it, info?.key ?: "-") }
+            groups.forEach { store.setManualMatch(it, info?.key ?: "-") }
             publish()
             onDone(info)
         }

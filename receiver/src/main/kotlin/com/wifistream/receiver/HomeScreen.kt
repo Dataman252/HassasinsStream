@@ -816,12 +816,27 @@ private fun SettingsTab(vm: AppViewModel) {
                 }
             }
         }
+        if (shows(SettingsSection.ABOUT)) item {
+            FocusRow(onClick = {
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:hkhan25295@gmail.com"))
+                            .putExtra(android.content.Intent.EXTRA_SUBJECT, "Hassasin's Stream"),
+                    )
+                }
+            }) {
+                Column(Modifier.weight(1f)) {
+                    Text("Made by Hassan Khan", style = MaterialTheme.typography.titleMedium)
+                    Text("hkhan25295@gmail.com · ideas and bug reports welcome", color = Muted, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
         if (shows(SettingsSection.ABOUT)) item { UpdateRow() }
         if (shows(SettingsSection.ABOUT) && DONATE_URL.isNotBlank()) item {
             FocusRow(onClick = { Donate.showing = true }) {
                 Column(Modifier.weight(1f)) {
                     Text("Support the developer", style = MaterialTheme.typography.titleMedium)
-                    Text("Hassasin's Stream is free. Buy the developer a coffee.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text("Hassasin's Stream is free. Buy the developer a coffee over UPI.", color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
                 Text("☕", style = MaterialTheme.typography.titleLarge)
             }

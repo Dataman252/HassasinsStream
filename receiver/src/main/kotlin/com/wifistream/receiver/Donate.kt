@@ -28,11 +28,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-/** Where "Buy me a coffee" goes. Empty hides the pop-up and the Settings row. */
-const val DONATE_URL = ""
+/** The developer's UPI payment link (the same one inside the QR code). Empty hides the pop-up. */
+const val DONATE_URL = "upi://pay?pa=7016587945-2@axl&pn=HASSANKHAN%20PATHAN&cu=INR&tn=Coffee%20for%20Hassasin%27s%20Stream"
 
 /**
  * The app is free; once per new version it asks, gently, for a coffee. "Not now" asks again next
@@ -53,8 +54,10 @@ object Donate {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("quiet_for", Updater.installedVersion(context)).apply()
     }
 
+    /** Opens a UPI app (PhonePe, Google Pay, Paytm, BHIM…) with the payment filled in. */
     fun open(context: Context): Boolean = runCatching {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(DONATE_URL)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val pay = Intent(Intent.ACTION_VIEW, Uri.parse(DONATE_URL))
+        context.startActivity(Intent.createChooser(pay, "Pay with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }.isSuccess
 }
 
@@ -80,47 +83,67 @@ fun DonateCard(onClose: () -> Unit) {
     val context = LocalContext.current
     val tv = LocalIsTv.current
     val first = remember { FocusRequester() }
-    var qr by remember { mutableStateOf(false) }
+    var noApp by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     androidx.activity.compose.BackHandler(onBack = onClose)
-    Box(Modifier.fillMaxSize().background(Color(0xB3000000)), contentAlignment = Alignment.Center) {
-        Column(
-            Modifier
-                .widthIn(max = 460.dp)
-                .padding(20.dp)
-                .background(Color(0xFF14141C), RoundedCornerShape(24.dp))
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text("☕", style = MaterialTheme.typography.displaySmall)
-            Text("Enjoying Hassasin's Stream?", style = MaterialTheme.typography.titleLarge, color = Color.White, textAlign = TextAlign.Center)
-            Text(
-                "It's free, with no ads and no accounts, and it's built in spare time. If it makes movie night better, a coffee keeps new versions coming.",
-                color = Color(0xFFCBD5E1),
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xB3000000)), contentAlignment = Alignment.Center) {
+        // Side by side when the screen is wide (TVs, phones on their side); stacked on an upright phone.
+        val wide = maxWidth > maxHeight
+        val qrHeight = if (wide) (maxHeight * 0.78f).coerceAtMost(420.dp) else (maxHeight * 0.42f).coerceAtMost(343.dp)
+        val code: @Composable () -> Unit = {
+            // The developer's UPI code, as issued: scan it from any UPI app.
+            Image(
+                androidx.compose.ui.res.painterResource(R.drawable.upi_qr),
+                contentDescription = "UPI code to pay the developer",
+                modifier = Modifier.size(width = qrHeight * 0.525f, height = qrHeight).clip(RoundedCornerShape(16.dp)),
             )
-            if (qr || tv) {
-                // TVs have no browser: show the link as a code for the phone's camera.
-                val image = remember { qrBitmap(DONATE_URL, 480) }
-                Box(Modifier.size(200.dp).background(Color.White, RoundedCornerShape(12.dp)).padding(8.dp)) {
-                    Image(image, contentDescription = "Buy me a coffee link", modifier = Modifier.fillMaxSize())
+        }
+        val words: @Composable () -> Unit = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = if (wide) Alignment.Start else Alignment.CenterHorizontally) {
+                Text("☕  Enjoying Hassasin's Stream?", style = MaterialTheme.typography.titleLarge, color = Color.White, textAlign = if (wide) TextAlign.Start else TextAlign.Center)
+                Text(
+                    "It's free, with no ads and no accounts, and it's built in spare time. If it makes movie night better, a coffee keeps new versions coming.",
+                    color = Color(0xFFCBD5E1),
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = if (wide) TextAlign.Start else TextAlign.Center,
+                )
+                Text(
+                    when {
+                        noApp -> "No UPI app on this device: scan the code with your phone."
+                        tv -> "Scan the code with any UPI app on your phone."
+                        else -> "Scan the code, or pay from a UPI app on this phone."
+                    },
+                    color = Color(0xFF94A3B8),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (!tv) {
+                        PillButton("Pay with UPI app", onClick = {
+                            if (Donate.open(context)) onClose() else noApp = true
+                        }, modifier = Modifier.focusRequester(first), primary = true, onDark = true)
+                    }
+                    PillButton("Not now", onClick = onClose, modifier = if (tv) Modifier.focusRequester(first) else Modifier, onDark = true)
                 }
-                Text("Scan with your phone's camera", color = Color(0xFF94A3B8), style = MaterialTheme.typography.bodySmall)
+                PillButton("Don't ask again", onClick = {
+                    Donate.quietForThisVersion(context)
+                    onClose()
+                }, onDark = true)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (!tv) {
-                    PillButton("Buy me a coffee", onClick = {
-                        if (!Donate.open(context)) qr = true else onClose()
-                    }, modifier = Modifier.focusRequester(first), primary = true, onDark = true)
-                }
-                PillButton("Not now", onClick = onClose, modifier = if (tv) Modifier.focusRequester(first) else Modifier, onDark = true)
+        }
+        val card = Modifier
+            .padding(16.dp)
+            .background(Color(0xFF14141C), RoundedCornerShape(24.dp))
+            .padding(20.dp)
+        if (wide) {
+            Row(card.widthIn(max = 860.dp), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                code()
+                Box(Modifier.weight(1f)) { words() }
             }
-            PillButton("Don't ask again", onClick = {
-                Donate.quietForThisVersion(context)
-                onClose()
-            }, onDark = true)
+        } else {
+            Column(card.widthIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                code()
+                words()
+            }
         }
     }
 }

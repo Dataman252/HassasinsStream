@@ -24,6 +24,10 @@ data class ShowChoices(val audioLanguage: String = "", val subtitleLanguage: Str
 private data class StoreData(
     /** File-name group ("movie|dune part two|2024") -> title key ("movie:693134"), or "" when TMDB had no match. */
     val matches: Map<String, String> = emptyMap(),
+    /** Groups whose match was chosen by hand (Fix match): never re-matched automatically. */
+    val manual: Set<String> = emptySet(),
+    /** Groups already re-checked once by the better matcher, so they are not searched again. */
+    val rechecked: Set<String> = emptySet(),
     val titles: Map<String, TitleInfo> = emptyMap(),
     /** "tv:1396:2" -> episodes of that season. */
     val seasons: Map<String, List<EpisodeInfo>> = emptyMap(),
@@ -109,6 +113,10 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
         data.progress[fileKey]?.takeIf { !it.finished && it.positionMs > 30_000 }?.positionMs ?: 0
 
     fun setMatch(group: String, titleKey: String) = change { copy(matches = matches + (group to titleKey)) }
+    fun setManualMatch(group: String, titleKey: String) = change { copy(matches = matches + (group to titleKey), manual = manual + group) }
+    fun isManual(group: String) = group in data.manual
+    fun wasRechecked(group: String) = group in data.rechecked
+    fun markRechecked(group: String) = change { copy(rechecked = rechecked + group) }
     fun putTitle(info: TitleInfo) = change { copy(titles = titles + (info.key to info)) }
     fun putSeason(key: String, episodes: List<EpisodeInfo>) = change { copy(seasons = seasons + (key to episodes)) }
     fun setDvAsHdr10(on: Boolean) = change { copy(dvAsHdr10 = on) }
