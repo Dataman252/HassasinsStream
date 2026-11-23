@@ -18,6 +18,9 @@ data class Progress(val positionMs: Long, val durationMs: Long, val updatedAt: L
 
 /** Choices remembered for one show, so every episode starts the same way. */
 @Serializable
+data class PictureEntry(val name: String, val settings: PictureSettings)
+
+@Serializable
 data class ShowChoices(val audioLanguage: String = "", val subtitleLanguage: String = "", val subtitleDelayMs: Int = 0)
 
 @Serializable
@@ -55,6 +58,12 @@ private data class StoreData(
     val shows: Map<String, ShowChoices> = emptyMap(),
     /** Show the big format badge (Dolby Vision, HDR10...) when a video starts. */
     val formatBadge: Boolean = true,
+    /** Picture adjustments per show or film (key: show key, or the film file's key). Original = excluded from "all". */
+    val picture: Map<String, PictureEntry> = emptyMap(),
+    /** Picture adjustments for every video that has none of its own; null when off. */
+    val pictureAll: PictureSettings? = null,
+    /** The viewer's own saved picture looks, by name, in the order made. */
+    val pictureProfiles: Map<String, PictureSettings> = emptyMap(),
 )
 
 /**
@@ -91,6 +100,32 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
     val passthrough: Boolean get() = data.passthrough
     val sound: SoundSettings get() = data.sound ?: SoundSettings(boostDb = data.boostDb)
     fun setSound(settings: SoundSettings) = change { copy(sound = settings) }
+
+    /** The picture a title plays with: its own, else the "all videos" one, else the file as it is. */
+    fun pictureFor(key: String?): PictureSettings = key?.let { data.picture[it]?.settings } ?: data.pictureAll ?: PictureSettings()
+    fun hasOwnPicture(key: String?): Boolean = key != null && key in data.picture
+    val pictureAll: PictureSettings? get() = data.pictureAll
+    val pictureEntries: Map<String, PictureEntry> get() = data.picture
+    fun setPicture(key: String, name: String, settings: PictureSettings) = change { copy(picture = picture + (key to PictureEntry(name, settings))) }
+    fun removePicture(key: String) = change { copy(picture = picture - key) }
+    val pictureProfiles: Map<String, PictureSettings> get() = data.pictureProfiles
+
+    /** Saves [settings] as a new look ("My look 1", "My look 2"…) and returns its name. */
+    fun savePictureProfile(settings: PictureSettings): String {
+        var n = data.pictureProfiles.size + 1
+        while ("My look $n" in data.pictureProfiles) n++
+        val name = "My look $n"
+        change { copy(pictureProfiles = pictureProfiles + (name to settings)) }
+        return name
+    }
+    fun deletePictureProfile(name: String) = change { copy(pictureProfiles = pictureProfiles - name) }
+    fun renamePictureProfile(old: String, new: String) = change {
+        val value = pictureProfiles[old] ?: return@change this
+        val clean = new.trim().ifEmpty { return@change this }
+        copy(pictureProfiles = pictureProfiles.toList().map { if (it.first == old) clean to value else it }.toMap())
+    }
+
+    fun setPictureAll(settings: PictureSettings?) = change { copy(pictureAll = settings?.takeIf { !it.isOriginal }) }
     val userPresets: Map<String, EqSnapshot> get() = data.userPresets
     fun saveUserPreset(name: String, snapshot: EqSnapshot) = change { copy(userPresets = userPresets + (name to snapshot)) }
     fun deleteUserPreset(name: String) = change { copy(userPresets = userPresets - name) }

@@ -687,6 +687,7 @@ private fun SettingsTab(vm: AppViewModel) {
                 }
             }
         }
+        if (shows(SettingsSection.PLAYBACK)) item { PictureLooksPanel(vm.store, version) }
         if (shows(SettingsSection.PLAYBACK)) item {
             FocusRow(onClick = { vm.store.setDvAsHdr10(!dvOff) }) {
                 Column(Modifier.weight(1f)) {
@@ -896,7 +897,7 @@ enum class SettingsSection(val label: String, val detail: String, val icon: Int)
     LAYOUT("Layout", "Glass, Spotlight, Material or Bento", R.drawable.ic_tv),
     LOOK("Look", "Theme, colours, glass, icon", R.drawable.ic_palette),
     CONNECTION("Connection", "Speed test, keys, hotspot", R.drawable.ic_wifi),
-    PLAYBACK("Playback", "Dolby Vision, card style", R.drawable.ic_movie),
+    PLAYBACK("Playback", "Picture looks, Dolby Vision, cards", R.drawable.ic_movie),
     LIBRARY("Library", "Refresh, watch history", R.drawable.ic_history),
     DEVICE("This device", "What it can play", R.drawable.ic_tv),
     SOURCES("Sources", "Phones to play from", R.drawable.ic_phone),

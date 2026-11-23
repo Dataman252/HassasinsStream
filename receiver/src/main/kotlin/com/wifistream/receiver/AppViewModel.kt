@@ -814,7 +814,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         store.flush()
     }
 
-    private companion object {
+    companion object {
         const val KEY_LAST = "last_sender"
         const val KEY_WIDE_CARDS = "wide_cards"
 
@@ -825,7 +825,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
          */
         val COMPAT_ONLY = setOf(
             "wmv", "asf", "rm", "rmvb", "vob", "divx", "xvid", "ogm", "ogv", "m2ts", "mts", "m2t", "flv", "f4v",
-            "wtv", "dvr-ms", "mxf", "nut", "rec", "dav", "y4m", "evo", "3g2", "amv",
+            "wtv", "dvr-ms", "mxf", "mpg", "mpeg", "m1v", "m2v", "mpv", "vro", "nut", "rec", "dav", "y4m", "evo", "3g2", "amv",
         )
     }
 }

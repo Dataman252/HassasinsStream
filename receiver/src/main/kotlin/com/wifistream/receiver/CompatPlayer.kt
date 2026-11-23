@@ -187,7 +187,9 @@ fun CompatPlayerScreen(screen: Screen.CompatPlayer, store: LibraryStore, onExit:
 
     fun togglePlay() = if (player.isPlaying) player.pause() else player.play()
     fun skip(forward: Boolean) {
-        player.time = (player.time + if (forward) 30_000 else -10_000).coerceIn(0, lengthMs.coerceAtLeast(0))
+        val target = (player.time + if (forward) 30_000 else -10_000).coerceAtLeast(0)
+        // Some streams never report a length; jump anyway instead of going back to the start.
+        player.time = if (lengthMs > 0) target.coerceAtMost(lengthMs) else target
         hint = if (forward) "+30 s" else "−10 s"
     }
     fun cycleAudio() {

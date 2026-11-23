@@ -54,6 +54,12 @@
             android:exported="true">
         </activity>
         <!-- One launcher entry per icon colour; Settings switches which one is enabled. -->
+        <!-- Format lab: plays every video in a folder and reports what works (started from adb for testing). -->
+        <activity
+            android:name=".FormatLabActivity"
+            android:screenOrientation="landscape"
+            android:exported="true" />
+
         <activity-alias
             android:name=".IconClassic"
             android:enabled="true"

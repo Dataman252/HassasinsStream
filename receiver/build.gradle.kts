@@ -15,8 +15,8 @@ android {
         applicationId = "com.wifistream.receiver"
         minSdk = 28
         targetSdk = 35
-        versionCode = 14
-        versionName = "1.4.4"
+        versionCode = 15
+        versionName = "1.5"
         // ARM only: every phone and TV this runs on. Leaving out the emulator's x86 keeps the APK smaller.
         ndk { abiFilters += setOf("arm64-v8a", "armeabi-v7a") }
     }
@@ -68,6 +68,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.media3.exoplayer)
+    // Picture adjustments (brightness, contrast, vibrance...) run as a GPU effect on the video.
+    implementation("androidx.media3:media3-effect:1.7.1")
     implementation(libs.androidx.media3.ui)
     // Lock-screen and headset controls, and music that keeps playing in the background.
     implementation(libs.androidx.media3.session)

@@ -52,6 +52,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -241,10 +242,20 @@ fun PlayerScreen(
     // Where to pick up when the player is rebuilt (decoder or passthrough change): item index and position.
     var restart by remember { mutableStateOf<Pair<Int, Long>?>(null) }
 
+    // Picture adjustments: remembered per show or film, or for all videos. The GPU effect is only
+    // attached while something is changed, and never to HDR or Dolby Vision (they go to the TV untouched).
+    val pictureKey = item.showKey ?: item.key
+    val pictureName = remember(item.title) { item.title.replace(Regex("""\s*[·-]?\s*S\d+\s*E\d+.*$"""), "").trim().ifEmpty { item.title } }
+    val pictureHdr = item.media?.hdr?.let { it != com.wifistream.protocol.HdrType.SDR } == true
+    var pictureSettings by remember(pictureKey) { mutableStateOf(store.pictureFor(pictureKey)) }
+    var pictureScope by remember(pictureKey) { mutableIntStateOf(if (store.hasOwnPicture(pictureKey) || store.pictureAll == null) 0 else 1) }
+    var fxActive by remember { mutableStateOf(!store.pictureFor(screen.items.getOrNull(screen.startIndex)?.let { it.showKey ?: it.key }).isOriginal && !pictureHdr) }
+    SideEffect { PictureLive.settings = pictureSettings }
+
     // One sound session for the whole screen, so the equalizer stays attached when the player is rebuilt.
     val sessionId = remember { (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).generateAudioSessionId() }
 
-    val player = remember(dvAsHdr10, passthrough) {
+    val player = remember(dvAsHdr10, passthrough, fxActive) {
         ExoPlayer.Builder(context, AppRenderersFactory(context, passthrough, dvAsHdr10, soundOffsetUs, engine))
             .setLoadControl(roomyLoadControl())
             .setMediaSourceFactory(
@@ -273,6 +284,7 @@ fun PlayerScreen(
                 val index = restart?.first ?: screen.startIndex
                 val position = restart?.second ?: screen.items[index].startMs
                 setMediaItems(screen.items.map { it.toMediaItem() }, index, if (position > 0) position else C.TIME_UNSET)
+                if (fxActive) setVideoEffects(listOf(PictureEffect))
                 setPlaybackSpeed(speed)
                 audioSessionId = sessionId
                 // Start on the languages chosen last time, when the file has them.
@@ -285,6 +297,32 @@ fun PlayerScreen(
                 playWhenReady = restart != null || !resumeAsk
             }
     }
+
+    /** Uses new picture settings; attaching or removing the effect rebuilds the player at the same spot. */
+    fun usePicture(new: PictureSettings) {
+        pictureSettings = new
+        PictureLive.settings = new
+        val needed = !new.isOriginal && !pictureHdr
+        if (needed != fxActive) {
+            restart = player.currentMediaItemIndex to player.currentPosition
+            fxActive = needed
+        }
+    }
+
+    fun savePicture(new: PictureSettings) {
+        usePicture(new)
+        if (pictureScope == 1) {
+            store.setPictureAll(new)
+        } else if (new.isOriginal && store.pictureAll == null) {
+            store.removePicture(pictureKey ?: return)
+        } else {
+            // Original while "all videos" has a look: this title is kept out of it.
+            store.setPicture(pictureKey ?: return, pictureName, new)
+        }
+    }
+
+    // A new show or film in the queue brings its own picture.
+    LaunchedEffect(pictureKey) { usePicture(store.pictureFor(pictureKey)) }
 
     // Episodes that arrived on the sharing phone while this plays join the end of the queue.
     LaunchedEffect(player, screen.items.size) {
@@ -317,6 +355,8 @@ fun PlayerScreen(
 
     fun commitScrub() {
         scrubMs?.let {
+            // The final jump is exact; live previews while dragging used the nearest keyframe.
+            player.setSeekParameters(androidx.media3.exoplayer.SeekParameters.EXACT)
             player.seekTo(it)
             positionMs = it
         }
@@ -463,6 +503,13 @@ fun PlayerScreen(
                     useCompat("This device has no decoder for this video's format, so the compatibility engine is playing it.")
                 } else if (!audioOnly && sound.isNotEmpty() && sound.none { it.isSupported }) {
                     useCompat("This device cannot decode this file's sound, so the compatibility engine is playing it.")
+                } else if (!audioOnly && video.isNotEmpty() && sound.isEmpty()) {
+                    // AVI files can carry AC3 or DTS sound the main player does not even see.
+                    val path = screen.items.getOrNull(player.currentMediaItemIndex)?.url
+                        ?.let { Uri.parse(it).getQueryParameter("path") }.orEmpty()
+                    if (path.lowercase().endsWith(".avi")) {
+                        useCompat("The main player could not find this file's sound, so the compatibility engine is playing it.")
+                    }
                 }
             }
 
@@ -600,6 +647,22 @@ fun PlayerScreen(
         if (scrubMs != null && scrubByKeys) {
             delay(800)
             commitScrub()
+        }
+    }
+
+    // Dragging with a finger: the picture follows the finger, jumping to the nearest keyframe a few
+    // times a second (fast even on long-GOP HEVC); letting go makes the exact jump.
+    LaunchedEffect(scrubMs != null && !scrubByKeys) {
+        if (scrubMs == null || scrubByKeys || audioOnly) return@LaunchedEffect
+        var lastLive = -1L
+        while (true) {
+            val target = scrubMs ?: break
+            if (lastLive < 0 || abs(target - lastLive) >= 1_500) {
+                player.setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
+                player.seekTo(target)
+                lastLive = target
+            }
+            delay(400)
         }
     }
 
@@ -1742,6 +1805,49 @@ fun PlayerScreen(
                         matchRate = it
                         store.setMatchFrameRate(it)
                     })
+                    // ---- adjustments ----
+                    if (pictureHdr) {
+                        add(NoteRow("Picture adjustments are off for HDR and Dolby Vision, so the TV gets the picture exactly as made."))
+                    } else {
+                        // Built-in looks, then the viewer's saved ones, then Custom for anything else.
+                        val looks = PicturePreset.entries.map { it.label to it.settings } + store.pictureProfiles.toList()
+                        val lookIndex = looks.indexOfFirst { it.second == pictureSettings }.let { if (it < 0) looks.size else it }
+                        add(ChipsRow("Look", looks.map { it.first } + "Custom", lookIndex) { i ->
+                            if (i < looks.size) savePicture(looks[i].second)
+                        })
+                        if (lookIndex == looks.size && !pictureSettings.isOriginal) {
+                            add(ChoiceRow("Save this as my look", "Keeps these settings as a look you can pick for any title. Rename or delete it in Settings › Playback.") {
+                                val name = store.savePictureProfile(pictureSettings)
+                                hint = "Saved as $name"
+                            })
+                        }
+                        add(ChipsRow(
+                            "Remember for",
+                            listOf(if (item.showKey != null) "This show" else "This film", "All videos"),
+                            pictureScope,
+                        ) { i ->
+                            pictureScope = i
+                            savePicture(pictureSettings)
+                        })
+                        add(NoteRow(
+                            if (pictureScope == 1) "Every video without its own look uses this. Undo or pick titles in Settings › Playback › Picture adjustments."
+                            else "Only $pictureName uses this. See every saved look in Settings › Playback › Picture adjustments.",
+                        ))
+                        for (control in PICTURE_CONTROLS) {
+                            val value = control.get(pictureSettings)
+                            val span = (control.max - control.min).toFloat()
+                            add(StepperRow(
+                                control.label,
+                                if (value > 0) "+$value" else "$value",
+                                fraction = (value - control.min) / span,
+                                detail = control.detail,
+                                onSet = { f -> savePicture(control.set(pictureSettings, (((control.min + f * span) / 5f).roundToInt() * 5).coerceIn(control.min, control.max))) },
+                                onReset = { savePicture(control.set(pictureSettings, 0)) },
+                                changed = value != 0,
+                            ) { dir -> savePicture(control.set(pictureSettings, (value + dir * 5).coerceIn(control.min, control.max))) })
+                        }
+                        add(ChoiceRow("Back to the original picture", enabled = !pictureSettings.isOriginal) { savePicture(PictureSettings()) })
+                    }
                 }
 
                 PlayerPanel.SPEED -> buildList {

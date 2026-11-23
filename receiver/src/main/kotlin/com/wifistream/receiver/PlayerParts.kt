@@ -440,7 +440,8 @@ fun SeekBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(30.dp)
+            // A tall touch area around the thin bar, so a finger lands on it easily.
+            .height(48.dp)
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (event.key) {
