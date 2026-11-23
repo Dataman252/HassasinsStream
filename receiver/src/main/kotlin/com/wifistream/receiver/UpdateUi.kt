@@ -1,6 +1,11 @@
 package com.wifistream.receiver
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -90,6 +95,80 @@ fun UpdateRow() {
                 color = Muted,
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+    }
+}
+
+/**
+ * Every device runs the newest version: when GitHub has a newer one, this covers the app until it is
+ * installed. It never appears when the check could not reach GitHub, so an offline TV still works.
+ */
+@Composable
+fun UpdateGate() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val state = Updater.state
+    val info = when (state) {
+        is UpdateState.Available -> state.info
+        is UpdateState.Downloading -> state.info
+        is UpdateState.Installing -> state.info
+        is UpdateState.Failed -> state.info
+        else -> null
+    } ?: return
+    if (!Updater.newer(info.version, Updater.installedVersion(context))) return
+    androidx.activity.compose.BackHandler { /* stays until updated */ }
+    val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(state is UpdateState.Available || state is UpdateState.Failed) {
+        runCatching { focus.requestFocus() }
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color(0xF205070C))
+            // Swallows touches so nothing behind it can be used.
+            .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        Column(
+            Modifier.widthIn(max = 560.dp).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+        ) {
+            BrandMark(64.dp)
+            Text("Update required", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+            Text(
+                "Version ${info.version} is out (you have ${Updater.installedVersion(context)}). Every device stays on the newest version " +
+                    "for stability and new features. Your library, settings and watch history stay.",
+                color = Color(0xFFCBD5E1),
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            val notes = info.notes.lines().filter { it.trim().startsWith("-") }.take(5)
+                .joinToString("\n") { "•" + it.trim().removePrefix("-").replace("**", "") }
+            if (notes.isNotBlank()) {
+                Text(notes, color = Color(0xFFE2E8F0), style = MaterialTheme.typography.bodySmall, maxLines = 8, overflow = TextOverflow.Ellipsis)
+            }
+            when (state) {
+                is UpdateState.Downloading -> {
+                    Text("Downloading… ${(state.fraction * 100).toInt()}%", color = Color.White)
+                    Box(Modifier.fillMaxWidth().height(8.dp).background(Color(0x33FFFFFF), RoundedCornerShape(4.dp))) {
+                        Box(Modifier.fillMaxWidth(state.fraction.coerceIn(0f, 1f)).height(8.dp).background(Accent, RoundedCornerShape(4.dp)))
+                    }
+                }
+                is UpdateState.Installing -> Text("Confirm Update on the screen to finish.", color = Color.White)
+                else -> {
+                    if (state is UpdateState.Failed) {
+                        Text(state.message, color = Color(0xFFFCA5A5), style = MaterialTheme.typography.bodySmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                    PillButton(
+                        "Update now",
+                        onClick = { scope.launch { Updater.downloadAndInstall(context, info) } },
+                        modifier = Modifier.focusRequester(focus),
+                        primary = true,
+                        onDark = true,
+                    )
+                }
+            }
         }
     }
 }

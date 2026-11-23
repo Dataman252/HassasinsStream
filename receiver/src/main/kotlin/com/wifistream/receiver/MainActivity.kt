@@ -146,6 +146,9 @@ class MainActivity : ComponentActivity() {
                                             is Screen.Folder -> key(screen) { FolderScreen(vm, screen) }
                                             is Screen.Player, is Screen.CompatPlayer -> Unit
                                         }
+                                        // Never over a playing video: these wait until the viewer leaves the player.
+                                        DonatePrompt()
+                                        UpdateGate()
                                     }
                                 }
                             }

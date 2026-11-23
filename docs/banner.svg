@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="440" viewBox="0 0 1280 440" role="img" aria-label="Hassasin's Stream: your phone is the server, every screen is a cinema">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0F0F23"/><stop offset="1" stop-color="#030409"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8B5CF6"/><stop offset="0.5" stop-color="#6366F1"/><stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#C4B5FD"/><stop offset="0.45" stop-color="#FFFFFF"/><stop offset="0.55" stop-color="#FFFFFF"/><stop offset="1" stop-color="#67E8F9"/>
+      <animateTransform attributeName="gradientTransform" type="translate" values="-0.6 0; 0.6 0; -0.6 0" dur="7s" repeatCount="indefinite"/>
+    </linearGradient>
+    <radialGradient id="glowV"><stop offset="0" stop-color="#8B5CF6" stop-opacity="0.55"/><stop offset="1" stop-color="#8B5CF6" stop-opacity="0"/></radialGradient>
+    <radialGradient id="glowC"><stop offset="0" stop-color="#22D3EE" stop-opacity="0.45"/><stop offset="1" stop-color="#22D3EE" stop-opacity="0"/></radialGradient>
+    <radialGradient id="glowI"><stop offset="0" stop-color="#6366F1" stop-opacity="0.5"/><stop offset="1" stop-color="#6366F1" stop-opacity="0"/></radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#FFFFFF" stroke-opacity="0.04"/>
+    </pattern>
+    <clipPath id="frame"><rect width="1280" height="440" rx="28"/></clipPath>
+  </defs>
+  <g clip-path="url(#frame)">
+    <rect width="1280" height="440" fill="url(#bg)"/>
+    <rect width="1280" height="440" fill="url(#grid)"/>
+    <!-- drifting aurora -->
+    <circle r="320" fill="url(#glowV)"><animate attributeName="cx" values="180;360;180" dur="14s" repeatCount="indefinite"/><animate attributeName="cy" values="80;200;80" dur="11s" repeatCount="indefinite"/></circle>
+    <circle r="300" fill="url(#glowC)"><animate attributeName="cx" values="1120;900;1120" dur="12s" repeatCount="indefinite"/><animate attributeName="cy" values="380;260;380" dur="15s" repeatCount="indefinite"/></circle>
+    <circle r="260" fill="url(#glowI)"><animate attributeName="cx" values="700;560;700" dur="16s" repeatCount="indefinite"/><animate attributeName="cy" values="-20;120;-20" dur="13s" repeatCount="indefinite"/></circle>
+    <!-- film-strip light streaks -->
+    <g opacity="0.5">
+      <rect y="70" width="160" height="2" rx="1" fill="#67E8F9"><animate attributeName="x" values="-200;1400" dur="5s" repeatCount="indefinite"/></rect>
+      <rect y="372" width="240" height="2" rx="1" fill="#A78BFA"><animate attributeName="x" values="1400;-300" dur="6.5s" repeatCount="indefinite"/></rect>
+      <rect y="300" width="90" height="2" rx="1" fill="#FFFFFF"><animate attributeName="x" values="-200;1400" dur="8s" begin="2s" repeatCount="indefinite"/></rect>
+    </g>
+    <!-- logo -->
+    <g transform="translate(110 132)">
+      <rect x="-14" y="-14" width="204" height="204" rx="62" fill="url(#brand)" opacity="0.35">
+        <animate attributeName="opacity" values="0.15;0.45;0.15" dur="3.2s" repeatCount="indefinite"/>
+      </rect>
+      <g transform="scale(3.667)">
+        <path d="M11.5,0h25a11.5,11.5 0 0 1 11.5,11.5v25a11.5,11.5 0 0 1 -11.5,11.5h-25a11.5,11.5 0 0 1 -11.5,-11.5v-25a11.5,11.5 0 0 1 11.5,-11.5z" fill="url(#brand)"/>
+        <path d="M10.6,10.6h6.7v26.8h-6.7zM30.7,10.6h6.7v26.8h-6.7z" fill="#FFFFFF"/>
+        <path d="M19.7,17.3l9.6,6.7l-9.6,6.7z" fill="#FFFFFF">
+          <animateTransform attributeName="transform" type="translate" values="0 0; 1.2 0; 0 0" dur="1.6s" repeatCount="indefinite"/>
+        </path>
+      </g>
+    </g>
+    <!-- words -->
+    <g font-family="Segoe UI, Helvetica Neue, Roboto, Arial, sans-serif">
+      <text x="370" y="196" font-size="78" font-weight="800" fill="url(#shine)" letter-spacing="-1">Hassasin’s Stream</text>
+      <text x="372" y="248" font-size="27" font-weight="500" fill="#CBD5E1">Your phone is the server. Every screen is a cinema.</text>
+      <g font-size="17" font-weight="700" fill="#E2E8F0">
+        <g transform="translate(372 286)">
+          <rect width="96" height="36" rx="18" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.18"/><text x="48" y="24" text-anchor="middle">4K HDR</text>
+        </g>
+        <g transform="translate(480 286)">
+          <rect width="142" height="36" rx="18" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.18"/><text x="71" y="24" text-anchor="middle">Dolby Vision</text>
+        </g>
+        <g transform="translate(634 286)">
+          <rect width="96" height="36" rx="18" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.18"/><text x="48" y="24" text-anchor="middle">Atmos</text>
+        </g>
+        <g transform="translate(742 286)">
+          <rect width="126" height="36" rx="18" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.18"/><text x="63" y="24" text-anchor="middle">No cloud</text>
+        </g>
+        <g transform="translate(880 286)">
+          <rect width="150" height="36" rx="18" fill="url(#brand)"/><text x="75" y="24" text-anchor="middle" fill="#FFFFFF">100% free</text>
+        </g>
+      </g>
+    </g>
+  </g>
+  <rect x="0.5" y="0.5" width="1279" height="439" rx="28" fill="none" stroke="#FFFFFF" stroke-opacity="0.12"/>
+</svg>

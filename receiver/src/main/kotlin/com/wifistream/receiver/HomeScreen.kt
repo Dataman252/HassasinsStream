@@ -257,7 +257,6 @@ private fun HomeTab(vm: AppViewModel, home: Screen.Home) {
         lib.error?.let { message ->
             item { Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = screenMargin())) }
         }
-        item(key = "update") { UpdateCard(Modifier.padding(horizontal = screenMargin())) }
         val heroFocus = Modifier.restoreFocus(home, HERO, restore)
         when (AppTheme.layout) {
             AppLayout.GLASS -> if (heroInfo != null) item(key = "hero") { Hero(vm, heroInfo, heroFile, heroFocus) }
@@ -818,6 +817,15 @@ private fun SettingsTab(vm: AppViewModel) {
             }
         }
         if (shows(SettingsSection.ABOUT)) item { UpdateRow() }
+        if (shows(SettingsSection.ABOUT) && DONATE_URL.isNotBlank()) item {
+            FocusRow(onClick = { Donate.showing = true }) {
+                Column(Modifier.weight(1f)) {
+                    Text("Support the developer", style = MaterialTheme.typography.titleMedium)
+                    Text("Hassasin's Stream is free. Buy the developer a coffee.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                }
+                Text("☕", style = MaterialTheme.typography.titleLarge)
+            }
+        }
         if (shows(SettingsSection.ABOUT)) item {
             Spacer(Modifier.height(8.dp))
             Text(
