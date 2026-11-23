@@ -54,6 +54,12 @@ data class ServerInfo(
     val deviceId: String = "",
     val protocolVersion: Int = WifiStream.PROTOCOL_VERSION,
     val roots: List<StorageRoot>,
+    /** Changes whenever a media file is added, removed or replaced on a shared storage; 0 when unknown. */
+    val libraryStamp: Long = 0,
+    /** The sharing phone's battery temperature in °C, 0 when unknown. */
+    val temperatureC: Float = 0f,
+    /** True while the phone is too warm and has paused making seek-bar pictures. */
+    val previewsPaused: Boolean = false,
 )
 
 /** Where a key stands, as last checked by the device that holds it. */

@@ -60,17 +60,22 @@ import com.wifistream.protocol.badges
 
 @Composable
 fun HomeScreen(vm: AppViewModel, screen: Screen.Home) {
-    Column(Modifier.fillMaxSize()) {
-        // Preview caching shows its progress here, above the tabs, and folds away when done.
-        ThumbProgressBar(Modifier.align(Alignment.CenterHorizontally))
-        TabBar(vm, screen.tab) { screen.tab = it }
-        when (screen.tab) {
-            Tab.HOME -> HomeTab(vm, screen)
-            Tab.MOVIES -> PosterGrid(vm, screen, vm.library.movies, "No movies found yet.")
-            Tab.SHOWS -> PosterGrid(vm, screen, vm.library.shows, "No shows found yet.")
-            Tab.MUSIC -> AlbumGrid(vm, screen)
-            Tab.FOLDERS -> RootsList(vm)
-            Tab.SETTINGS -> SettingsTab(vm)
+    // Spotlight puts the menu down the left side on TVs and tablets; every other layout keeps the top bar.
+    val sideRail = AppTheme.layout == AppLayout.SPOTLIGHT && LocalWide.current
+    Row(Modifier.fillMaxSize()) {
+        if (sideRail) SideRail(vm, screen.tab) { screen.tab = it }
+        Column(Modifier.weight(1f).fillMaxSize()) {
+            // Preview caching shows its progress here, above the tabs, and folds away when done.
+            ThumbProgressBar(Modifier.align(Alignment.CenterHorizontally))
+            if (!sideRail) TabBar(vm, screen.tab) { screen.tab = it }
+            when (screen.tab) {
+                Tab.HOME -> HomeTab(vm, screen)
+                Tab.MOVIES -> PosterGrid(vm, screen, vm.library.movies, "No movies found yet.")
+                Tab.SHOWS -> PosterGrid(vm, screen, vm.library.shows, "No shows found yet.")
+                Tab.MUSIC -> AlbumGrid(vm, screen)
+                Tab.FOLDERS -> RootsList(vm)
+                Tab.SETTINGS -> SettingsTab(vm)
+            }
         }
     }
 }
@@ -119,7 +124,7 @@ private fun TabBar(vm: AppViewModel, selected: Tab, onSelect: (Tab) -> Unit) {
 
 /** Re-reads the phone's library; spins while that is happening. */
 @Composable
-private fun RefreshButton(busy: Boolean, modifier: Modifier, onClick: () -> Unit) {
+internal fun RefreshButton(busy: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val spin = androidx.compose.animation.core.rememberInfiniteTransition(label = "refresh")
@@ -252,8 +257,18 @@ private fun HomeTab(vm: AppViewModel, home: Screen.Home) {
         lib.error?.let { message ->
             item { Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = screenMargin())) }
         }
-        if (heroInfo != null) {
-            item(key = "hero") { Hero(vm, heroInfo, heroFile, Modifier.restoreFocus(home, HERO, restore)) }
+        val heroFocus = Modifier.restoreFocus(home, HERO, restore)
+        when (AppTheme.layout) {
+            AppLayout.GLASS -> if (heroInfo != null) item(key = "hero") { Hero(vm, heroInfo, heroFile, heroFocus) }
+            AppLayout.SPOTLIGHT -> if (heroInfo != null) item(key = "hero") { SpotlightHero(vm, heroInfo, heroFile, heroFocus) }
+            AppLayout.MATERIAL -> {
+                val featured = listOfNotNull(heroInfo) + recent.mapNotNull { titleInfoOf(it) }.filter { it.key != heroInfo?.key }.take(5)
+                if (featured.isNotEmpty()) item(key = "hero") { MaterialCarousel(vm, featured, heroFocus) }
+                val picks = (lib.movies + lib.shows).filter { (titleInfoOf(it)?.rating ?: 0.0) > 0 }
+                    .sortedByDescending { titleInfoOf(it)?.rating ?: 0.0 }.take(10)
+                if (picks.size >= 3) item(key = "top-picks") { TopPicks(vm, picks) }
+            }
+            AppLayout.BENTO -> if (lib.loaded) item(key = "hero") { BentoTiles(vm, home, heroFile, heroInfo, heroFocus) }
         }
         if (continuing.isNotEmpty()) {
             section("Continue watching") {
@@ -325,15 +340,39 @@ private fun HomeTab(vm: AppViewModel, home: Screen.Home) {
     }
 }
 
+private fun titleInfoOf(item: Any): TitleInfo? = when (item) {
+    is MovieItem -> item.info
+    is ShowItem -> item.info
+    else -> null
+}
+
 private fun LazyListScope.section(title: String, content: LazyListScope.() -> Unit) {
     item(key = "section-$title") {
         Column {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = screenMargin()),
-            )
+            // Each layout titles its rows in its own voice.
+            when (AppTheme.layout) {
+                AppLayout.SPOTLIGHT -> Text(
+                    title.uppercase(),
+                    fontFamily = LayoutDisplayFont,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = androidx.compose.ui.unit.TextUnit(2f, androidx.compose.ui.unit.TextUnitType.Sp),
+                    color = Accent,
+                    modifier = Modifier.padding(horizontal = screenMargin()),
+                )
+                AppLayout.MATERIAL -> Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = screenMargin()))
+                AppLayout.BENTO -> Text(
+                    title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier.padding(horizontal = screenMargin()),
+                )
+                AppLayout.GLASS -> Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = screenMargin()),
+                )
+            }
             // Vertical room so a focused, enlarged card is not cut off by the row.
             LazyRow(
                 contentPadding = PaddingValues(horizontal = screenMargin(), vertical = 10.dp),
@@ -588,6 +627,7 @@ private fun SettingsTab(vm: AppViewModel) {
                 ScreenTitle(open.label, subtitle = if (isTv) "Press Back for all settings" else null, onBack = { section = null })
             }
         }
+        if (shows(SettingsSection.LAYOUT)) item { LayoutPanel() }
         if (shows(SettingsSection.LOOK)) item { LookPanel() }
         // Connection: speed, the phone's keys, and the hotspot sit together.
         if (shows(SettingsSection.CONNECTION)) item {
@@ -828,6 +868,7 @@ fun AppViewModel.firstFileOf(info: TitleInfo): VideoFile? =
 
 /** The sections of Settings, shown as icon tiles on a TV. */
 enum class SettingsSection(val label: String, val detail: String, val icon: Int) {
+    LAYOUT("Layout", "Glass, Spotlight, Material or Bento", R.drawable.ic_tv),
     LOOK("Look", "Theme, colours, glass, icon", R.drawable.ic_palette),
     CONNECTION("Connection", "Speed test, keys, hotspot", R.drawable.ic_wifi),
     PLAYBACK("Playback", "Dolby Vision, card style", R.drawable.ic_movie),
@@ -891,7 +932,7 @@ private fun SettingsGrid(onOpen: (SettingsSection) -> Unit) {
                     row.forEach { s ->
                         FocusCard(
                             onClick = { onOpen(s) },
-                            modifier = (if (s == SettingsSection.LOOK) Modifier.focusRequester(first) else Modifier).size(tileWidth, tileHeight),
+                            modifier = (if (s == SettingsSection.LAYOUT) Modifier.focusRequester(first) else Modifier).size(tileWidth, tileHeight),
                         ) {
                             Column(
                                 Modifier.fillMaxSize().padding(if (roomy) 16.dp else 12.dp),

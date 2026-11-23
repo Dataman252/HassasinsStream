@@ -286,6 +286,12 @@ fun PlayerScreen(
             }
     }
 
+    // Episodes that arrived on the sharing phone while this plays join the end of the queue.
+    LaunchedEffect(player, screen.items.size) {
+        val have = player.mediaItemCount
+        if (screen.items.size > have) player.addMediaItems(screen.items.drop(have).map { it.toMediaItem() })
+    }
+
     fun saveProgress() {
         val key = screen.items.getOrNull(player.currentMediaItemIndex)?.key ?: return
         val duration = player.duration
@@ -758,7 +764,8 @@ fun PlayerScreen(
             host?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             bars?.show(WindowInsetsCompat.Type.systemBars())
             window?.let {
-                resetRefreshRate(it)
+                // Waits for the player to be released first, so the TV leaves HDR before the mode changes.
+                resetRefreshRate(it, afterMs = 800)
                 it.attributes = it.attributes.apply { screenBrightness = -1f }
             }
         }
@@ -1209,7 +1216,13 @@ fun PlayerScreen(
             LoadingBadge(bufferedMs - positionMs, stats.networkBitsPerSecond, Modifier.align(Alignment.Center))
         }
 
-        if (pausedScreen && !inPip) PausedOverlay(item, title, positionMs, durationMs)
+        if (pausedScreen && !inPip) {
+            if (AppTheme.layout == AppLayout.BENTO && !audioOnly) {
+                BentoPausedOverlay(item, title, positionMs, durationMs, screen.items.getOrNull(itemIndex + 1))
+            } else {
+                PausedOverlay(item, title, positionMs, durationMs)
+            }
+        }
 
         // "Skip intro" / "Skip credits", where the file's chapters say so.
         if (skipKind != null && panel == null && !resumeAsk && !inPip && error == null) {

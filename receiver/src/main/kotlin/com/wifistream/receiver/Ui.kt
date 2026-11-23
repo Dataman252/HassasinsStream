@@ -76,7 +76,69 @@ fun ReceiverTheme(content: @Composable () -> Unit) {
             surfaceVariant = Panel, onSurfaceVariant = Muted,
         )
     }
-    MaterialTheme(colorScheme = scheme, content = content)
+    MaterialTheme(colorScheme = scheme, typography = layoutTypography(AppTheme.layout), content = content)
+}
+
+private val InterFont = androidx.compose.ui.text.font.FontFamily(
+    androidx.compose.ui.text.font.Font(R.font.inter_400, androidx.compose.ui.text.font.FontWeight.Normal),
+    androidx.compose.ui.text.font.Font(R.font.inter_600, androidx.compose.ui.text.font.FontWeight.SemiBold),
+    androidx.compose.ui.text.font.Font(R.font.inter_700, androidx.compose.ui.text.font.FontWeight.Bold),
+)
+private val SpaceGroteskFont = androidx.compose.ui.text.font.FontFamily(
+    androidx.compose.ui.text.font.Font(R.font.space_grotesk_500, androidx.compose.ui.text.font.FontWeight.Medium),
+    androidx.compose.ui.text.font.Font(R.font.space_grotesk_700, androidx.compose.ui.text.font.FontWeight.Bold),
+)
+private val OswaldFont = androidx.compose.ui.text.font.FontFamily(
+    androidx.compose.ui.text.font.Font(R.font.oswald_500, androidx.compose.ui.text.font.FontWeight.Medium),
+    androidx.compose.ui.text.font.Font(R.font.oswald_700, androidx.compose.ui.text.font.FontWeight.Bold),
+)
+private val ManropeFont = androidx.compose.ui.text.font.FontFamily(
+    androidx.compose.ui.text.font.Font(R.font.manrope_600, androidx.compose.ui.text.font.FontWeight.SemiBold),
+    androidx.compose.ui.text.font.Font(R.font.manrope_800, androidx.compose.ui.text.font.FontWeight.ExtraBold),
+)
+
+/** The heading typeface of the chosen layout, for big titles drawn outside the type scale. */
+val LayoutDisplayFont: androidx.compose.ui.text.font.FontFamily
+    get() = when (AppTheme.layout) {
+        AppLayout.GLASS -> SpaceGroteskFont
+        AppLayout.SPOTLIGHT -> OswaldFont
+        AppLayout.MATERIAL -> InterFont
+        AppLayout.BENTO -> ManropeFont
+    }
+
+/** Inter for reading everywhere; each layout brings its own heading face. */
+private fun layoutTypography(layout: AppLayout): androidx.compose.material3.Typography {
+    val base = androidx.compose.material3.Typography()
+    val head = when (layout) {
+        AppLayout.GLASS -> SpaceGroteskFont
+        AppLayout.SPOTLIGHT -> OswaldFont
+        AppLayout.MATERIAL -> InterFont
+        AppLayout.BENTO -> ManropeFont
+    }
+    val headWeight = when (layout) {
+        AppLayout.BENTO -> androidx.compose.ui.text.font.FontWeight.ExtraBold
+        AppLayout.MATERIAL -> androidx.compose.ui.text.font.FontWeight.SemiBold
+        else -> androidx.compose.ui.text.font.FontWeight.Bold
+    }
+    fun androidx.compose.ui.text.TextStyle.heading() = copy(fontFamily = head, fontWeight = headWeight)
+    fun androidx.compose.ui.text.TextStyle.body() = copy(fontFamily = InterFont)
+    return base.copy(
+        displayLarge = base.displayLarge.heading(),
+        displayMedium = base.displayMedium.heading(),
+        displaySmall = base.displaySmall.heading(),
+        headlineLarge = base.headlineLarge.heading(),
+        headlineMedium = base.headlineMedium.heading(),
+        headlineSmall = base.headlineSmall.heading(),
+        titleLarge = base.titleLarge.heading(),
+        titleMedium = base.titleMedium.body(),
+        titleSmall = base.titleSmall.body(),
+        bodyLarge = base.bodyLarge.body(),
+        bodyMedium = base.bodyMedium.body(),
+        bodySmall = base.bodySmall.body(),
+        labelLarge = base.labelLarge.body(),
+        labelMedium = base.labelMedium.body(),
+        labelSmall = base.labelSmall.body(),
+    )
 }
 
 /** Screen side margin: TVs lose the picture edge to overscan, phones do not. */

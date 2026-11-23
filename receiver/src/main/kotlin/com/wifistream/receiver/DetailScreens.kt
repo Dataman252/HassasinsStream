@@ -147,6 +147,7 @@ fun MovieDetailScreen(vm: AppViewModel, screen: Screen.MovieDetail) {
                     if (watched) "Mark as not watched" else "Mark as watched",
                     onClick = { vm.store.setWatched(item.files.map { it.key }, !watched) },
                 )
+                PillButton("Fix match", onClick = { vm.open(Screen.FixMatch(item.info.key, best.parsed.title, isShow = false)) })
             }
         }
         // More than one copy on the phone (for example 4K and 1080p): let the viewer choose.
@@ -196,6 +197,7 @@ fun ShowDetailScreen(vm: AppViewModel, screen: Screen.ShowDetail) {
                     primary = true,
                 )
                 show.info.trailerKey?.let { key -> PillButton("Trailer", onClick = { openTrailer(context, key) }) }
+                PillButton("Fix match", onClick = { vm.open(Screen.FixMatch(show.info.key, next.parsed.title, isShow = true)) })
             }
         }
         item { PlayabilityBlock(vm, next) }

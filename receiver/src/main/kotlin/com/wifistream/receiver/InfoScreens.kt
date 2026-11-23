@@ -215,7 +215,7 @@ fun PropertiesScreen(vm: AppViewModel, screen: Screen.Properties) {
             item { Fact("Duration", formatClock(duration)) }
             item { Fact("Overall bitrate", "%.1f Mbps".format(file.entry.sizeBytes * 8.0 / (duration / 1000.0) / 1_000_000)) }
         }
-        vm.titleOf(file)?.let { info -> item { Fact("Matched as", "${info.title} (${info.year ?: "?"})  ·  TMDB ${info.type} ${info.id}") } }
+        vm.titleOf(file)?.let { info -> item { Fact("Matched as", "${info.title} (${info.year ?: "?"})  ·  ${info.sourceLabel} ${info.type} ${info.id}") } }
 
         val all = tracks
         when {

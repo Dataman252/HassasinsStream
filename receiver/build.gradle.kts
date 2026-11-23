@@ -15,8 +15,8 @@ android {
         applicationId = "com.wifistream.receiver"
         minSdk = 28
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.1"
+        versionCode = 5
+        versionName = "1.2"
         // ARM only: every phone and TV this runs on. Leaving out the emulator's x86 keeps the APK smaller.
         ndk { abiFilters += setOf("arm64-v8a", "armeabi-v7a") }
     }

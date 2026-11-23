@@ -187,6 +187,15 @@ fun ShareScreen(onBack: () -> Unit, onKeys: (() -> Unit)? = null, keys: ApiKeys?
             }
         }
 
+        if (status.running) {
+            item { HealthCard(status.temperatureC, status.previewsPaused) }
+        }
+        item { LockChecklist(battery = setup.battery, onBattery = {
+            @Suppress("BatteryLife")
+            context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, appUri))
+        }) }
+        item { EventLog() }
+
         item {
             FocusRow(onClick = {
                 // Apps may not switch the hotspot on themselves; this opens the system screen that does.
@@ -282,6 +291,123 @@ fun ShareScreen(onBack: () -> Unit, onKeys: (() -> Unit)? = null, keys: ApiKeys?
                 }
             }
             item { PillButton("Choose folders", onClick = { picking = true }, primary = shared.isEmpty()) }
+        }
+    }
+}
+
+/** The phone's warmth while sharing; seek-bar pictures pause by themselves when it gets warm. */
+@Composable
+private fun HealthCard(temperatureC: Float, paused: Boolean) {
+    val warm = paused || temperatureC >= 40f
+    val (dot, text) = when {
+        temperatureC <= 0f -> Muted to "Temperature not reported by this phone"
+        warm -> Color(0xFFF59E0B) to "Warm · ${"%.0f".format(temperatureC)} °C · seek-bar pictures paused to cool down"
+        else -> StatusOn to "Steady · ${"%.0f".format(temperatureC)} °C"
+    }
+    FocusRow(onClick = {}) {
+        Box(Modifier.size(10.dp).background(dot, CircleShape))
+        Column(Modifier.weight(1f)) {
+            Text("Phone health", style = MaterialTheme.typography.titleMedium)
+            Text(text, color = Muted, style = MaterialTheme.typography.bodySmall)
+            if (warm) {
+                Text(
+                    "Playback is not affected. Pictures carry on once the phone is below 38 °C. Charging while sharing and a case make it warmer.",
+                    color = Muted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Everything that lets sharing survive a locked screen. Phone makers add their own background limits
+ * on top of Android's (vivo and Samsung especially), and those can only be switched off by hand.
+ */
+@Composable
+private fun LockChecklist(battery: Boolean, onBattery: () -> Unit) {
+    val context = LocalContext.current
+    val maker = Build.MANUFACTURER.lowercase()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("Keep sharing when the screen locks", style = MaterialTheme.typography.titleMedium)
+        CheckLine(battery, "Battery: unrestricted", if (battery) null else "Fix", onBattery)
+        val makerStep = when {
+            "vivo" in maker || "iqoo" in maker -> "vivo: Battery › Background power use › allow, and Autostart on"
+            "samsung" in maker -> "Samsung: Battery › Never sleeping apps › add Hassasin's Stream"
+            "xiaomi" in maker || "redmi" in maker || "poco" in maker -> "Xiaomi: Autostart on, Battery saver › No restrictions"
+            "oppo" in maker || "realme" in maker || "oneplus" in maker -> "Battery › Allow background activity and Auto launch"
+            else -> "App battery settings: allow background activity"
+        }
+        CheckLine(null, makerStep, "Open") { openMakerSettings(context) }
+        CheckLine(null, "Wi-Fi: keep on during sleep (some phones turn it off when locked)", "Open") {
+            runCatching { context.startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
+        }
+        CheckLine(true, "Sharing restarts by itself if the phone stops it", null) {}
+    }
+}
+
+@Composable
+private fun CheckLine(ok: Boolean?, text: String, action: String?, onClick: () -> Unit) {
+    androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(
+            Modifier.size(10.dp).background(
+                when (ok) {
+                    true -> StatusOn
+                    false -> Color(0xFFF59E0B)
+                    null -> Muted
+                },
+                CircleShape,
+            ),
+        )
+        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        if (action != null) PillButton(action, onClick = onClick, primary = ok == false)
+    }
+}
+
+/** Opens the phone maker's own background or autostart screen, falling back to the app's info page. */
+private fun openMakerSettings(context: Context) {
+    val candidates = listOf(
+        Intent().setClassName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
+        Intent().setClassName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager"),
+        Intent().setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+        Intent().setClassName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+        Intent().setClassName("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"),
+    )
+    for (intent in candidates) {
+        if (runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return
+    }
+    runCatching {
+        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+    }
+}
+
+/** What happened to sharing lately, so a drop with the screen locked can be explained. */
+@Composable
+private fun EventLog() {
+    val context = LocalContext.current
+    LaunchedEffect(Unit) { ShareState.loadEvents(context.applicationContext) }
+    val events by ShareState.events.collectAsStateWithLifecycle()
+    if (events.isEmpty()) return
+    val format = remember { java.text.SimpleDateFormat("dd MMM HH:mm", java.util.Locale.getDefault()) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Recent events", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            PillButton("Clear", onClick = { ShareState.clearEvents(context.applicationContext) })
+        }
+        events.take(12).forEach { e ->
+            Text("${format.format(java.util.Date(e.at))}   ${e.text}", color = Muted, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

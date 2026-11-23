@@ -21,7 +21,10 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
-/** A movie or show as shown in the library. [type] is "movie" or "tv". */
+/**
+ * A movie or show as shown in the library. [type] is "movie" or "tv" (TMDB), or, when TMDB has
+ * no key or no answer, "tvmaze" (a show from TVmaze) or "wiki" (a film from Wikipedia).
+ */
 @Serializable
 data class TitleInfo(
     val type: String,
@@ -39,13 +42,24 @@ data class TitleInfo(
     val trailerKey: String? = null,
 ) {
     val key: String get() = "$type:$id"
-    val isMovie: Boolean get() = type == "movie"
+    val isMovie: Boolean get() = type == "movie" || type == "wiki"
+
+    /** True for TMDB titles; their id also works for online subtitle searches. */
+    val isTmdb: Boolean get() = type == "movie" || type == "tv"
+
+    /** Where the details came from, for the info screen. */
+    val sourceLabel: String get() = when (type) {
+        "tvmaze" -> "TVmaze"
+        "wiki" -> "Wikipedia"
+        else -> "TMDB"
+    }
 }
 
 @Serializable
 data class EpisodeInfo(val number: Int, val name: String, val overview: String = "", val still: String? = null)
 
-fun tmdbImage(path: String?, size: String): String? = path?.let { "https://image.tmdb.org/t/p/$size$it" }
+/** A TMDB picture at [size]; pictures from the fallback sources are already full addresses. */
+fun tmdbImage(path: String?, size: String): String? = path?.let { if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/$size$it" }
 
 private fun JsonObject.str(key: String): String? = (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
 private fun JsonObject.int(key: String): Int? = (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.intOrNull
@@ -75,6 +89,22 @@ class Tmdb(private val base: () -> String?) {
         val id = query(name.year) ?: if (name.year != null) query(null) else null
         return id?.let { type to it }
     }
+
+    /** Up to [limit] titles for a typed search, for choosing the right one by hand. */
+    suspend fun searchMany(query: String, type: String, limit: Int = 6): List<TitleInfo> =
+        get("search/$type", listOf("query" to query)).arr("results").take(limit).mapNotNull { o ->
+            val movie = type == "movie"
+            TitleInfo(
+                type = type,
+                id = o.int("id") ?: return@mapNotNull null,
+                title = o.str(if (movie) "title" else "name").orEmpty(),
+                year = o.str(if (movie) "release_date" else "first_air_date")?.take(4)?.takeIf { it.length == 4 },
+                overview = o.str("overview").orEmpty(),
+                poster = o.str("poster_path"),
+                backdrop = o.str("backdrop_path"),
+                rating = o.dbl("vote_average") ?: 0.0,
+            )
+        }
 
     suspend fun details(type: String, id: Int): TitleInfo {
         val o = get("$type/$id", listOf("append_to_response" to "videos,credits"))

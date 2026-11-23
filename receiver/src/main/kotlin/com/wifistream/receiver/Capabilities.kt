@@ -214,6 +214,13 @@ fun DeviceCapabilities.limits(): List<String> {
     } else {
         "Sound passed through untouched: ${through.joinToString(", ")}. Other formats are decoded on this device."
     }
+    if ("DTS" in through && "DTS-HD" !in through) {
+        lines += "DTS-HD MA and DTS:X tracks reach the TV or soundbar as their DTS core (5.1, lossy). " +
+            "That is a limit of this device's HDMI output; nothing is lost in the file."
+    }
+    if ("TrueHD" !in through && "E-AC3" in through) {
+        lines += "Dolby TrueHD is decoded here to multichannel sound; Atmos inside it is kept only through Dolby Digital Plus."
+    }
     return lines
 }
 

@@ -62,7 +62,17 @@ class FileServer(
             install(AutoHeadResponse)
             routing {
                 get(WifiStream.Path.INFO) {
-                    call.respond(ServerInfo(name = deviceName, deviceId = storage.deviceId(), roots = storage.roots().map { it.info }))
+                    val health = ShareState.status.value
+                    call.respond(
+                        ServerInfo(
+                            name = deviceName,
+                            deviceId = storage.deviceId(),
+                            roots = storage.roots().map { it.info },
+                            libraryStamp = ShareState.libraryStamp,
+                            temperatureC = health.temperatureC,
+                            previewsPaused = health.previewsPaused,
+                        ),
+                    )
                 }
                 get(WifiStream.Path.LIST) {
                     val listing = listing(
@@ -460,6 +470,8 @@ class FileServer(
             for (bucket in coarse + fine) {
                 // Someone is dragging the seek bar: let their request go first.
                 while (liveRequests.get() > 0) kotlinx.coroutines.delay(150)
+                // The phone is warm: wait until it cools down (decoding frames is what heats it).
+                while (ShareState.status.value.previewsPaused) kotlinx.coroutines.delay(10_000)
                 // The drive was unplugged or the file deleted: stop, and allow a fresh start later.
                 if (!file.isFile) {
                     preparing.remove(file.absolutePath)
@@ -468,7 +480,15 @@ class FileServer(
                 if (pack(root, file).has(bucket)) continue
                 decode(root, file, bucket)
                 // Gentle on the drive and the battery, unless the watching device asked for speed.
-                if (pace <= 1) kotlinx.coroutines.delay(120)
+                // Spread out so the phone stays cool while it also serves the film; faster only when asked for.
+                kotlinx.coroutines.delay(
+                    when {
+                        pace >= 3 -> 60L
+                        pace == 2 -> 250L
+                        ShareState.status.value.temperatureC >= 37f -> 1_500L
+                        else -> 600L
+                    },
+                )
             }
         }
     }

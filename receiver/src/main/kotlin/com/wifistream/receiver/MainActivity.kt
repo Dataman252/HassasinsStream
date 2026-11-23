@@ -134,6 +134,7 @@ class MainActivity : ComponentActivity() {
                                             Screen.Keys -> KeysScreen(vm)
                                             Screen.Capabilities -> CapabilitiesScreen(vm)
                                             is Screen.Properties -> key(screen) { PropertiesScreen(vm, screen) }
+                                            is Screen.FixMatch -> key(screen) { FixMatchScreen(vm, screen) }
                                             is Screen.Home -> HomeScreen(vm, screen)
                                             is Screen.MovieDetail -> key(screen) { MovieDetailScreen(vm, screen) }
                                             is Screen.ShowDetail -> key(screen) { ShowDetailScreen(vm, screen) }

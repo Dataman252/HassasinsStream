@@ -21,6 +21,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 
 class SubtitleFile(val url: String, val fileName: String)
@@ -68,6 +69,9 @@ sealed interface Screen {
     /** What this device and its screen can play. */
     data object Capabilities : Screen
 
+    /** Choosing the right title by hand when the automatic match is wrong or missing. */
+    class FixMatch(val titleKey: String, val query: String, val isShow: Boolean) : Screen
+
     /** Every detail of one file. */
     class Properties(val file: VideoFile) : Screen
 
@@ -94,7 +98,10 @@ sealed interface Screen {
     }
 
     /** [askResume] is false after switching engines: the film simply carries on. */
-    class Player(val items: List<PlayItem>, val startIndex: Int, val askResume: Boolean = true) : Screen
+    class Player(items: List<PlayItem>, val startIndex: Int, val askResume: Boolean = true) : Screen {
+        /** Live: episodes that arrive on the sharing phone while this plays are added to the end. */
+        val items = androidx.compose.runtime.mutableStateListOf<PlayItem>().also { it.addAll(items) }
+    }
 
     /**
      * The compatibility engine (VLC), for files the main player cannot play. [startMs] overrides the
@@ -236,6 +243,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             var misses = 0
             var knownDevice = ""
             var knownRoots = emptySet<String>()
+            var knownStamp = 0L
             while (true) {
                 delay(3_000)
                 val current = connection ?: continue
@@ -264,8 +272,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 linkState = if (driveGone) LinkState.DRIVE_MISSING else LinkState.OK
                 Thumbs.holdOff = driveGone
                 knownRoots = knownRoots + now
+                // The sharing phone's files changed (a new episode was copied in): re-read on our own.
+                val filesChanged = knownStamp != 0L && info.libraryStamp != 0L && info.libraryStamp != knownStamp
+                knownStamp = info.libraryStamp
                 // While a drive is missing the library stays as it was; once everything is back, re-read.
-                if (!driveGone && (wasLost || wasMissing || before != now)) refreshLibrary(recheckKeys = wasLost)
+                if (!driveGone && (wasLost || wasMissing || before != now || filesChanged)) refreshLibrary(recheckKeys = wasLost)
             }
         }
         viewModelScope.launch {
@@ -486,16 +497,49 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return libraries.sumOf { it.pendingScans }
     }
 
+    private val freeGate = kotlinx.coroutines.sync.Semaphore(3)
+
+    /**
+     * TMDB is tried first. When the sharing phone has no working TMDB key, or TMDB does not know the
+     * title, TVmaze (shows) and Wikipedia (films) fill in the poster and plot instead.
+     */
+    private suspend fun matchFree(group: String, name: com.wifistream.protocol.ParsedName): Boolean {
+        return freeGate.withPermit {
+            if (name.isEpisode) {
+                val (info, seasons) = runCatching { FreeLookup.tvmazeShow(name) }.getOrElse { return@withPermit false } ?: run {
+                    store.setMatch(group, "")
+                    return@withPermit true
+                }
+                store.putTitle(info)
+                seasons.forEach { (season, episodes) -> store.putSeason("${info.key}:$season", episodes) }
+                store.setMatch(group, info.key)
+            } else {
+                val info = runCatching { FreeLookup.wikipediaFilm(name) }.getOrElse { return@withPermit false }
+                if (info == null) {
+                    store.setMatch(group, "")
+                } else {
+                    store.putTitle(info)
+                    store.setMatch(group, info.key)
+                }
+            }
+            true
+        }
+    }
+
     private suspend fun matchTitles() {
-        if (!usable(remoteKeys?.tmdb)) return
+        val tmdbReady = usable(remoteKeys?.tmdb)
         val unknown = videos.filter { it.looksLikeTitle }.groupBy { it.group }.filterKeys { store.match(it) == null }
         coroutineScope {
             unknown.forEach { (group, files) ->
                 launch {
+                    if (!tmdbReady) {
+                        if (matchFree(group, files.first().parsed)) publish()
+                        return@launch
+                    }
                     // A network failure leaves the group unknown, so the next refresh tries again.
                     val hit = runCatching { tmdb.search(files.first().parsed) }.getOrElse { return@launch }
                     if (hit == null) {
-                        store.setMatch(group, "")
+                        if (!matchFree(group, files.first().parsed)) store.setMatch(group, "")
                     } else {
                         val key = "${hit.first}:${hit.second}"
                         if (store.title(key) == null) {
@@ -550,12 +594,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             albums = albums,
             loaded = true,
         )
+        extendPlayingQueue()
     }
 
     /** Episode names for one season, fetched once and then kept on the device. */
     fun ensureSeason(show: TitleInfo, season: Int) {
         val key = "${show.key}:$season"
-        if (!usable(remoteKeys?.tmdb) || store.season(key) != null || !seasonsLoading.add(key)) return
+        if (!show.isTmdb || !usable(remoteKeys?.tmdb) || store.season(key) != null || !seasonsLoading.add(key)) return
         viewModelScope.launch {
             runCatching { tmdb.season(show.id, season) }.onSuccess { store.putSeason(key, it) }
             seasonsLoading.remove(key)
@@ -587,31 +632,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val from = queue.indexOf(file).coerceAtLeast(0)
         // The whole queue goes to the player, so its episode list can jump backwards as well as forwards.
         val items = queue.mapIndexed { index, video ->
-            val base = video.entry.name.substringBeforeLast('.')
-            val info = titleOf(video)
-            val episode = if (info != null && !info.isMovie) {
-                store.season("${info.key}:${video.parsed.season}")?.firstOrNull { it.number == video.parsed.episode }
-            } else {
-                null
-            }
-            PlayItem(
-                url = client.fileUrl(video.root, video.entry.path),
-                title = displayTitle(video),
-                bitsPerSecond = video.entry.media?.durationMs?.takeIf { it > 0 }?.let { video.entry.sizeBytes * 8_000 / it } ?: 0,
-                key = video.key,
-                tmdbId = titleOf(video)?.id,
-                season = video.parsed.season.takeIf { titleOf(video)?.isMovie == false },
-                episode = video.parsed.episode.takeIf { titleOf(video)?.isMovie == false },
-                startMs = if (index == from) store.resumePosition(video.key) else 0,
-                episodeName = episode?.name?.takeIf { it.isNotBlank() },
-                overview = episode?.overview?.takeIf { it.isNotBlank() } ?: info?.overview.orEmpty(),
-                meta = info?.let { metaLine(it) }.orEmpty(),
-                media = video.entry.media,
-                showKey = info?.takeIf { !it.isMovie }?.key,
-                subtitles = subtitles["${video.root}|${video.folder}"].orEmpty()
-                    .filter { it.name.startsWith(base) }
-                    .map { SubtitleFile(client.fileUrl(video.root, it.path), it.name) },
-            )
+            playItem(client, video, startMs = if (index == from) store.resumePosition(video.key) else 0)
         }
         // Formats the main player is known not to handle go straight to the compatibility engine.
         val ext = file.entry.name.substringAfterLast('.', "").lowercase()
@@ -619,6 +640,101 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             open(Screen.CompatPlayer(items, from, reason = "${ext.uppercase()} files play with the compatibility engine."))
         } else {
             open(Screen.Player(items, from))
+        }
+    }
+
+    private fun playItem(client: SenderClient, video: VideoFile, startMs: Long): PlayItem {
+        val base = video.entry.name.substringBeforeLast('.')
+        val info = titleOf(video)
+        val episode = if (info != null && !info.isMovie) {
+            store.season("${info.key}:${video.parsed.season}")?.firstOrNull { it.number == video.parsed.episode }
+        } else {
+            null
+        }
+        return PlayItem(
+            url = client.fileUrl(video.root, video.entry.path),
+            title = displayTitle(video),
+            bitsPerSecond = video.entry.media?.durationMs?.takeIf { it > 0 }?.let { video.entry.sizeBytes * 8_000 / it } ?: 0,
+            key = video.key,
+            tmdbId = info?.takeIf { it.isTmdb }?.id,
+            season = video.parsed.season.takeIf { info?.isMovie == false },
+            episode = video.parsed.episode.takeIf { info?.isMovie == false },
+            startMs = startMs,
+            episodeName = episode?.name?.takeIf { it.isNotBlank() },
+            overview = episode?.overview?.takeIf { it.isNotBlank() } ?: info?.overview.orEmpty(),
+            meta = info?.let { metaLine(it) }.orEmpty(),
+            media = video.entry.media,
+            showKey = info?.takeIf { !it.isMovie }?.key,
+            subtitles = subtitles["${video.root}|${video.folder}"].orEmpty()
+                .filter { it.name.startsWith(base) }
+                .map { SubtitleFile(client.fileUrl(video.root, it.path), it.name) },
+        )
+    }
+
+    /**
+     * When a show is playing and new episodes of it have arrived on the sharing phone, they join the
+     * end of the player's queue, so "Next episode" and autoplay work without pressing Refresh.
+     */
+    private fun extendPlayingQueue() {
+        val client = connection?.client ?: return
+        val player = backStack.lastOrNull() as? Screen.Player ?: return
+        val last = player.items.lastOrNull() ?: return
+        val showKey = last.showKey ?: return
+        val show = library.shows.firstOrNull { it.info.key == showKey } ?: return
+        val have = player.items.mapNotNullTo(HashSet()) { it.key }
+        val lastSeason = last.season ?: return
+        val lastEpisode = last.episode ?: return
+        val newer = show.episodes.filter { ep ->
+            val s = ep.parsed.season ?: return@filter false
+            val e = ep.parsed.episode ?: return@filter false
+            ep.key !in have && (s > lastSeason || (s == lastSeason && e > lastEpisode))
+        }.distinctBy { it.parsed.season to it.parsed.episode }
+        if (newer.isNotEmpty()) player.items.addAll(newer.map { playItem(client, it, startMs = 0) })
+    }
+
+    // ---------- fixing a match by hand ----------
+
+    /** Episodes found with a TVmaze candidate, kept until one is chosen. */
+    private val candidateSeasons = mutableMapOf<String, Map<Int, List<EpisodeInfo>>>()
+
+    /** Titles that could be meant by [query]: TMDB's results first, then TVmaze or Wikipedia. */
+    suspend fun matchCandidates(query: String, isShow: Boolean): List<TitleInfo> = coroutineScope {
+        val name = com.wifistream.protocol.ParsedName(query, season = if (isShow) 1 else null, episode = if (isShow) 1 else null)
+        val fromTmdb = async {
+            if (usable(remoteKeys?.tmdb)) runCatching { tmdb.searchMany(query, if (isShow) "tv" else "movie") }.getOrDefault(emptyList()) else emptyList()
+        }
+        val free = async {
+            runCatching {
+                if (isShow) {
+                    FreeLookup.tvmazeShow(name)?.let { (info, seasons) ->
+                        candidateSeasons[info.key] = seasons
+                        info
+                    }
+                } else {
+                    FreeLookup.wikipediaFilm(name)
+                }
+            }.getOrNull()
+        }
+        fromTmdb.await() + listOfNotNull(free.await())
+    }
+
+    /** Points every file of [oldKey] at [chosen] (or at nothing, when it is not a film or show). */
+    fun applyMatch(oldKey: String, chosen: TitleInfo?, onDone: (TitleInfo?) -> Unit) {
+        viewModelScope.launch {
+            val groups = store.groupsFor(oldKey)
+            val info = when {
+                chosen == null -> null
+                chosen.isTmdb -> runCatching { tmdb.details(chosen.type, chosen.id) }.getOrDefault(chosen)
+                else -> chosen
+            }
+            if (info != null) {
+                store.putTitle(info)
+                candidateSeasons.remove(info.key)?.forEach { (season, episodes) -> store.putSeason("${info.key}:$season", episodes) }
+            }
+            // "-" marks a choice made by hand, so Refresh never matches these files again by itself.
+            groups.forEach { store.setMatch(it, info?.key ?: "-") }
+            publish()
+            onDone(info)
         }
     }
 

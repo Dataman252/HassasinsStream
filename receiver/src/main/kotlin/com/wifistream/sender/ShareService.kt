@@ -48,8 +48,70 @@ class ShareService : Service() {
             notification("Starting…"),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
         )
-        if (server == null) startSharing()
+        if (server == null) {
+            ShareState.loadEvents(applicationContext)
+            // No intent means Android stopped the service and has now brought it back by itself.
+            ShareState.log(applicationContext, if (intent == null) "Restarted by itself after the phone stopped it" else "Sharing turned on")
+            startSharing()
+        }
         return START_STICKY
+    }
+
+    /** Logs Wi-Fi and screen changes, so a drop while the phone is locked can be traced afterwards. */
+    private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
+    private var screenReceiver: android.content.BroadcastReceiver? = null
+
+    private fun watchPhone() {
+        val connectivity = getSystemService(android.net.ConnectivityManager::class.java)
+        val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) = ShareState.log(applicationContext, "Wi-Fi connected")
+            override fun onLost(network: android.net.Network) = ShareState.log(applicationContext, "Wi-Fi lost")
+        }
+        val wifiOnly = android.net.NetworkRequest.Builder().addTransportType(android.net.NetworkCapabilities.TRANSPORT_WIFI).build()
+        runCatching { connectivity.registerNetworkCallback(wifiOnly, callback) }.onSuccess { networkCallback = callback }
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                when (intent.action) {
+                    Intent.ACTION_SCREEN_OFF -> ShareState.log(applicationContext, "Screen locked")
+                    Intent.ACTION_SCREEN_ON -> ShareState.log(applicationContext, "Screen on")
+                    PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED -> {
+                        val idle = getSystemService(PowerManager::class.java).isDeviceIdleMode
+                        ShareState.log(applicationContext, if (idle) "Phone went into deep sleep (Doze)" else "Phone woke from deep sleep")
+                    }
+                }
+            }
+        }
+        val filter = android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
+        }
+        runCatching { registerReceiver(receiver, filter) }.onSuccess { screenReceiver = receiver }
+    }
+
+    /** Battery temperature in °C, or 0 when the phone does not say. */
+    private fun batteryTemperature(): Float {
+        val battery = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return 0f
+        return battery.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 0) / 10f
+    }
+
+    /** A number that changes whenever a media file is added, removed or replaced in a shared folder. */
+    private fun libraryStamp(storage: Storage): Long {
+        var stamp = 17L
+        for (root in storage.roots()) {
+            root.dir.walkTopDown().maxDepth(12)
+                .onEnter { !it.name.startsWith(".") }
+                .filter { it.isFile }
+                .forEach { file ->
+                    val kind = com.wifistream.protocol.kindForFileName(file.name)
+                    if (kind == com.wifistream.protocol.EntryKind.VIDEO || kind == com.wifistream.protocol.EntryKind.AUDIO ||
+                        kind == com.wifistream.protocol.EntryKind.SUBTITLE
+                    ) {
+                        stamp = stamp * 31 + file.path.hashCode() + file.length() * 7 + file.lastModified()
+                    }
+                }
+        }
+        return if (stamp == 0L) 1L else stamp
     }
 
     private fun startSharing() {
@@ -83,6 +145,34 @@ class ShareService : Service() {
         // Find out straight away whether the keys work, so watching devices can be told.
         scope.launch { runCatching { keys.check(force = true) } }
         scope.launch { mediaScanner.scannedCount.collect { n -> ShareState.status.update { it.copy(scannedFiles = n) } } }
+        watchPhone()
+        // Heat and new files: checked quietly in the background.
+        scope.launch {
+            val power = getSystemService(PowerManager::class.java)
+            val storage = Storage(applicationContext)
+            var round = 0
+            while (isActive) {
+                val temperature = batteryTemperature()
+                val thermal = power.currentThermalStatus
+                val wasPaused = ShareState.status.value.previewsPaused
+                // Pause at 40 °C or when Android reports any heat; carry on only once it is clearly cooler.
+                val paused = if (wasPaused) {
+                    temperature >= 38f || thermal >= PowerManager.THERMAL_STATUS_MODERATE
+                } else {
+                    temperature >= 40f || thermal >= PowerManager.THERMAL_STATUS_LIGHT
+                }
+                if (paused != wasPaused) {
+                    ShareState.log(
+                        applicationContext,
+                        if (paused) "Warm (${"%.0f".format(temperature)} °C): seek-bar pictures paused" else "Cooled down: seek-bar pictures resumed",
+                    )
+                }
+                ShareState.status.update { it.copy(temperatureC = temperature, previewsPaused = paused) }
+                if (round % 4 == 0) ShareState.libraryStamp = runCatching { libraryStamp(storage) }.getOrDefault(ShareState.libraryStamp)
+                round++
+                delay(5_000)
+            }
+        }
         // The address changes when the phone hops between Wi-Fi networks or turns on its hotspot.
         scope.launch {
             var shown: String? = "unset"
@@ -123,6 +213,11 @@ class ShareService : Service() {
     }
 
     override fun onDestroy() {
+        if (server != null) ShareState.log(applicationContext, "Sharing stopped")
+        networkCallback?.let { cb -> runCatching { getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(cb) } }
+        screenReceiver?.let { runCatching { unregisterReceiver(it) } }
+        networkCallback = null
+        screenReceiver = null
         discovery?.unregister()
         scope.cancel()
         scanner?.save()

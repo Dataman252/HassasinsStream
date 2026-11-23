@@ -75,6 +75,9 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
         private set
 
     fun match(group: String): String? = data.matches[group]
+
+    /** Every file group currently matched to [titleKey]. */
+    fun groupsFor(titleKey: String): List<String> = data.matches.filterValues { it == titleKey }.keys.toList()
     fun title(key: String): TitleInfo? = data.titles[key]
     fun season(key: String): List<EpisodeInfo>? = data.seasons[key]
     fun progress(fileKey: String): Progress? = data.progress[fileKey]
@@ -116,7 +119,10 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
         change { copy(subLanguage = language, subSize = size, subColour = colour, subBackground = background) }
 
     /** Forget "no match" answers so a refresh asks TMDB again. */
-    fun clearFailedMatches() = change { copy(matches = matches.filterValues { it.isNotEmpty() }) }
+    /** Forgets misses, and titles found only by the free fallbacks, so TMDB gets another go. */
+    fun clearFailedMatches() = change {
+        copy(matches = matches.filterValues { it.isNotEmpty() && !it.startsWith("tvmaze:") && !it.startsWith("wiki:") })
+    }
 
     fun setProgress(fileKey: String, positionMs: Long, durationMs: Long) {
         if (durationMs <= 0) return

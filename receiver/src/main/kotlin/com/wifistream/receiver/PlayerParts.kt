@@ -321,12 +321,33 @@ fun matchRefreshRate(window: Window, display: Display?, videoFps: Float): Float?
     } ?: return null
     val multiple = (best.refreshRate / videoFps).roundToInt().coerceAtLeast(1)
     if (abs(best.refreshRate - videoFps * multiple) > 0.5f || best.modeId == current.modeId) return null
+    // Remember the TV's mode before the app first changed it, so leaving restores exactly that.
+    if (DisplayModeMemory.originalModeId == 0) DisplayModeMemory.originalModeId = current.modeId
     window.attributes = window.attributes.apply { preferredDisplayModeId = best.modeId }
     return best.refreshRate
 }
 
-fun resetRefreshRate(window: Window) {
-    window.attributes = window.attributes.apply { preferredDisplayModeId = 0 }
+/** The TV's own mode before the player switched it; 0 when the app has not changed anything. */
+object DisplayModeMemory {
+    @Volatile var originalModeId = 0
+}
+
+/**
+ * Gives the screen back to the TV, and only if the app changed it. With [afterMs] the change waits
+ * until the player has let go of the picture: switching the HDMI mode while an HDR stream is still
+ * closing can leave the TV in the wrong colour format and a lower resolution until it is replugged.
+ */
+fun resetRefreshRate(window: Window, afterMs: Long = 0) {
+    if (DisplayModeMemory.originalModeId == 0) return
+    val apply = Runnable {
+        val original = DisplayModeMemory.originalModeId
+        if (original == 0) return@Runnable
+        DisplayModeMemory.originalModeId = 0
+        // Ask for the original mode by id first, then clear the request so the TV's own setting rules again.
+        window.attributes = window.attributes.apply { preferredDisplayModeId = original }
+        window.decorView.postDelayed({ window.attributes = window.attributes.apply { preferredDisplayModeId = 0 } }, 1_500)
+    }
+    if (afterMs > 0) window.decorView.postDelayed(apply, afterMs) else apply.run()
 }
 
 // ---------- controls ----------

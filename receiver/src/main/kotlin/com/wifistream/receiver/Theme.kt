@@ -49,7 +49,24 @@ enum class ColorPreset(
         listOf(0xFF1F80E0, 0xFF5B4BF5, 0xFFC13BF7), listOf(0xFF141B2E, 0xFF0C111B, 0xFF05070D), listOf(0xFFDFE3F2, 0xFFE6E9F5, 0xFFD6DBEE)),
     STUDIO("Studio", "Apple TV+ style: quiet monochrome", 0xFFF5F5F7, 0xFF1D1D1F,
         listOf(0xFF3A3A3C, 0xFF8E8E93, 0xFFE5E5EA), listOf(0xFF161618, 0xFF0A0A0B, 0xFF000000), listOf(0xFFE8E8ED, 0xFFF2F2F7, 0xFFE0E0E6)),
+    SPOTLIGHT_GOLD("Spotlight Gold", "Warm gold on deep black", 0xFFF5B14C, 0xFF9A5B00,
+        listOf(0xFF7C4A12, 0xFFF5B14C, 0xFFFDE68A), listOf(0xFF1C1917, 0xFF0C0A09, 0xFF000000), listOf(0xFFEDE6DC, 0xFFF4EFE8, 0xFFE4DBCD)),
+    MATERIAL_LILAC("Material Lilac", "Soft tonal purple", 0xFFD0BCFF, 0xFF6750A4,
+        listOf(0xFF4F378B, 0xFF7F67BE, 0xFFD0BCFF), listOf(0xFF1D1B20, 0xFF141218, 0xFF0F0D13), listOf(0xFFE7E0EC, 0xFFFEF7FF, 0xFFE6DFEB)),
+    BENTO_BLUE("Bento Blue", "Clear blue on graphite tiles", 0xFF7AA2FF, 0xFF2952CC,
+        listOf(0xFF334A7A, 0xFF5B8CFF, 0xFFA9C1FF), listOf(0xFF111114, 0xFF0B0B0E, 0xFF050507), listOf(0xFFE4E4E7, 0xFFF4F4F5, 0xFFDCDCE0)),
     CUSTOM("Custom", "Your own accent colour", 0, 0, emptyList(), listOf(0xFF101018, 0xFF08080C, 0xFF030305), listOf(0xFFE1E5EE, 0xFFE8EBF2, 0xFFD8DDE8)),
+}
+
+/**
+ * The four designs of the whole app. Each one brings its own colours and type; the colours can
+ * still be changed under Look afterwards. Every device keeps its own choice.
+ */
+enum class AppLayout(val label: String, val note: String, val preset: ColorPreset) {
+    GLASS("Glass", "Floating glass menu, large hero, soft backdrop", ColorPreset.HASSASIN),
+    SPOTLIGHT("Spotlight", "Full-screen artwork, side menu, bold titles", ColorPreset.SPOTLIGHT_GOLD),
+    MATERIAL("Material", "Featured carousel, Top picks and tidy rows", ColorPreset.MATERIAL_LILAC),
+    BENTO("Bento", "Tiles of different sizes; pause screen in tiles", ColorPreset.BENTO_BLUE),
 }
 
 /** Accent colours for the Custom theme. */
@@ -81,6 +98,16 @@ object AppTheme {
         private set
     var icon by mutableStateOf(AppIcon.CLASSIC)
         private set
+
+    var layout by mutableStateOf(AppLayout.GLASS)
+        private set
+
+    /** Switches the design, and its matching colours. */
+    fun changeLayout(context: Context, choice: AppLayout) {
+        layout = choice
+        context.getSharedPreferences("look", Context.MODE_PRIVATE).edit().putString("layout", choice.name).apply()
+        change(context, preset = choice.preset)
+    }
 
     /** Phones only, for testing: lay the app out as it appears on a TV. */
     var tvLayout by mutableStateOf(false)
@@ -114,6 +141,7 @@ object AppTheme {
         icon = read("icon", AppIcon.entries, AppIcon.CLASSIC)
         customAccent = prefs.getInt("accent", 0).coerceIn(0, CUSTOM_ACCENTS.lastIndex)
         tvLayout = prefs.getBoolean("tv_layout", false)
+        layout = read("layout", AppLayout.entries, AppLayout.GLASS)
     }
 
     fun change(
