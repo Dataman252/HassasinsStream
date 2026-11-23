@@ -1,0 +1,13 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+secrets.properties
+wifistream-keys.json
+APKs/
+.claude/
+*-keys.json
+*.keystore
+*.jks
