@@ -1,0 +1,21 @@
+{
+  "name": "hassasins-stream-trailer",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render Trailer out/hassasins-stream-trailer.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.546",
+    "@remotion/google-fonts": "4.0.546",
+    "@remotion/transitions": "4.0.546",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "remotion": "4.0.546"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.8",
+    "typescript": "5.8.3"
+  }
+}
