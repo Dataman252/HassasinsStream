@@ -489,13 +489,15 @@ fun BentoPausedOverlay(item: PlayItem, title: String, positionMs: Long, duration
                 BentoInfo("Time", time, if (durationMs > 0) "${formatClock(durationMs - positionMs)} left" else null, tile, Modifier.weight(1f).fillMaxHeight())
                 BentoInfo(
                     if (upNext != null) "Up next" else "About",
-                    upNext?.let { listOfNotNull(it.season?.let { s -> "S$s E${it.episode}" }, it.episodeName ?: it.title).joinToString(" · ") }
+                    // The title already carries "S1 E8"; add the episode's own name when TMDB has one.
+                    upNext?.let { listOfNotNull(it.title, it.episodeName).joinToString(" · ") }
                         ?: item.episodeName ?: item.meta.ifEmpty { title },
                     if (upNext == null) item.overview.takeIf { it.isNotBlank() } else null,
                     tile,
                     Modifier.weight(2f).fillMaxHeight(),
                 )
-                BentoInfo("Controls", "Press OK to play", "Back to leave", tile, Modifier.weight(1f).fillMaxHeight())
+                val tv = LocalIsTv.current
+                BentoInfo("Controls", if (tv) "Press OK to play" else "Tap to play", if (tv) "Back to leave" else "Swipe back to leave", tile, Modifier.weight(1f).fillMaxHeight())
             }
         }
     }
