@@ -532,9 +532,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * A film matched by the older matcher to a title whose year is far from the file's year
      * (a 2026 re-release matched to the 2019 film): searched again once with the better matcher.
      */
+    /** Groups whose title details are fetched again on this pass, even though they are known. */
+    private val refreshDetails = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     private fun needsRecheck(group: String, match: String): Boolean {
-        if (store.isManual(group) || !match.startsWith("movie:")) return false
+        if (!match.startsWith("movie:") || store.isManual(group)) return false
         val title = store.title(match) ?: return false
+        // 1.4.2: a wide picture once borrowed from search results may belong to another film; fetch
+        // the details again once so it is replaced by the title's own picture or its poster.
+        if (!store.wasRechecked("art2|$group")) {
+            store.markRechecked("art2|$group")
+            refreshDetails += group
+            return true
+        }
+        if (store.isManual(group)) return false
         // A match with no picture at all: look once more (search results can carry art the page lacks).
         if (title.poster == null && title.backdrop == null && !store.wasRechecked("art|$group")) {
             store.markRechecked("art|$group")
@@ -557,18 +568,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         coroutineScope {
             unknown.forEach { (group, files) ->
                 launch {
+                    // A re-check of a film that is already matched never loses that match.
+                    val previous = store.match(group)?.takeIf { it.isNotEmpty() && it != "-" }
                     if (!tmdbReady) {
-                        if (matchFree(group, files.first().parsed)) publish()
+                        if (previous == null && matchFree(group, files.first().parsed)) publish()
                         return@launch
                     }
                     // A network failure leaves the group unknown, so the next refresh tries again.
                     val hit = runCatching { tmdb.search(files.first().parsed) }.getOrElse { return@launch }
+                    if (hit == null && previous != null) return@launch
                     if (hit == null) {
                         if (!matchFree(group, files.first().parsed)) store.setMatch(group, "")
                     } else {
                         val key = "${hit.first}:${hit.second}"
                         val known = store.title(key)
-                        if (known == null || (known.poster == null && known.backdrop == null)) {
+                        if (known == null || (known.poster == null && known.backdrop == null) || refreshDetails.remove(group)) {
                             store.putTitle(runCatching { tmdb.details(hit.first, hit.second) }.getOrElse { return@launch })
                         }
                         store.setMatch(group, key)

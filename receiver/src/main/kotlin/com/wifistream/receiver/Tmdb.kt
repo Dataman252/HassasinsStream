@@ -98,9 +98,8 @@ class Tmdb(private val base: () -> String?) {
         fun addAll(list: List<JsonObject>) = list.forEach { o ->
             o.int("id")?.let { id ->
                 candidates.putIfAbsent(id, o)
-                // Some new entries show artwork in search results before their own page has any.
+                // Some new entries show a poster in search results before their own page has one.
                 o.str("poster_path")?.let { searchPosters.putIfAbsent(id, it) }
-                o.str("backdrop_path")?.let { searchBackdrops.putIfAbsent(id, it) }
             }
         }
         addAll(query(name.title, name.year))
@@ -134,7 +133,6 @@ class Tmdb(private val base: () -> String?) {
     }
 
     private val searchPosters = java.util.concurrent.ConcurrentHashMap<Int, String>()
-    private val searchBackdrops = java.util.concurrent.ConcurrentHashMap<Int, String>()
 
     private fun normalTitle(s: String) = s.lowercase().replace(Regex("[^a-z0-9]"), "")
 
@@ -168,7 +166,9 @@ class Tmdb(private val base: () -> String?) {
             year = o.str(if (movie) "release_date" else "first_air_date")?.take(4)?.takeIf { it.length == 4 },
             overview = o.str("overview").orEmpty(),
             poster = o.str("poster_path") ?: searchPosters[id],
-            backdrop = o.str("backdrop_path") ?: searchBackdrops[id],
+            // Only the title's own wide picture: search results can show an unrelated one (a new
+            // re-release showing another film's still), and the poster is used when there is none.
+            backdrop = o.str("backdrop_path"),
             rating = o.dbl("vote_average") ?: 0.0,
             runtimeMin = if (movie) o.int("runtime") else (o["episode_run_time"] as? JsonArray)?.firstOrNull()?.jsonPrimitive?.intOrNull,
             genres = o.arr("genres").mapNotNull { it.str("name") },
