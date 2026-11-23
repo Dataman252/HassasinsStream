@@ -31,4 +31,4 @@ fun MediaInfo.audioLabel(): String? {
 }
 
 /** The quality tags shown next to a video, in display order. */
-fun MediaInfo.badges(): List<String> = listOfNotNull(resolutionLabel(), hdrLabel(), audioLabel())
+fun MediaInfo.badges(): List<String> = listOfNotNull(resolutionLabel(), videoCodec, hdrLabel(), audioLabel())

@@ -414,11 +414,11 @@ fun PlayerScreen(
     var switched by remember { mutableStateOf(false) }
 
     /** Hands this video to the compatibility engine at the same spot. */
-    fun useCompat(reason: String) {
+    fun useCompat(reason: String, atMs: Long = player.currentPosition) {
         if (switched) return
         switched = true
         saveProgress()
-        onCompat(Screen.CompatPlayer(screen.items, player.currentMediaItemIndex.coerceAtLeast(0), player.currentPosition, reason))
+        onCompat(Screen.CompatPlayer(screen.items, player.currentMediaItemIndex.coerceAtLeast(0), atMs, reason))
     }
 
     fun rememberAudio(language: String?) {
@@ -482,11 +482,24 @@ fun PlayerScreen(
 
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
                 if (reason == Player.DISCONTINUITY_REASON_SEEK) lastJumpAt = System.currentTimeMillis()
+                // A file with no seek index (some MKV, FLV and TS files): the main player would start over
+                // instead of jumping. The compatibility engine can seek in it, so it takes over at that spot.
+                if (reason == Player.DISCONTINUITY_REASON_SEEK && !audioOnly && player.duration > 0 &&
+                    !player.isCurrentMediaItemSeekable && newPosition.positionMs > 3_000 &&
+                    newPosition.mediaItemIndex == oldPosition.mediaItemIndex
+                ) {
+                    useCompat("This file has no seek index, so the compatibility engine is playing it to allow jumping.", newPosition.positionMs)
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 buffering = playbackState == Player.STATE_BUFFERING
                 if (playbackState == Player.STATE_READY) {
+                    // Resuming part-way into a file the main player cannot seek in: hand it over at that spot.
+                    val resumeAt = screen.items.getOrNull(player.currentMediaItemIndex)?.startMs ?: 0
+                    if (!hadReady && !audioOnly && !player.isCurrentMediaItemSeekable && resumeAt > 5_000 && player.currentPosition < 3_000) {
+                        useCompat("This file has no seek index, so the compatibility engine is resuming it.", resumeAt)
+                    }
                     hadReady = true
                     lostConnection = false
                 }

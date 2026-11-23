@@ -100,6 +100,21 @@ fun formatReport(player: ExoPlayer, stats: PlaybackStats, media: MediaInfo?, dis
             w > 0 -> "SD"
             else -> null
         } ?: ""
+        // The codec really being decoded, so a change of format (HEVC, AV1…) is visible at once.
+        when (video.sampleMimeType) {
+            MimeTypes.VIDEO_H265 -> "HEVC"
+            MimeTypes.VIDEO_H264 -> "H.264"
+            MimeTypes.VIDEO_AV1 -> "AV1"
+            MimeTypes.VIDEO_VP9 -> "VP9"
+            MimeTypes.VIDEO_MPEG2 -> "MPEG-2"
+            MimeTypes.VIDEO_VC1 -> "VC-1"
+            MimeTypes.VIDEO_DOLBY_VISION -> when {
+                video.codecs.orEmpty().startsWith("dav1") -> "AV1"
+                video.codecs.orEmpty().startsWith("dva") -> "H.264"
+                else -> "HEVC"
+            }
+            else -> null
+        }?.let { badges += it }
         if (picture != null) badges += picture
 
         // The screen's own limits: an HDR picture on an SDR screen is converted by the device.
@@ -133,7 +148,11 @@ fun formatReport(player: ExoPlayer, stats: PlaybackStats, media: MediaInfo?, dis
             MimeTypes.AUDIO_DTS_X -> "DTS:X"
             MimeTypes.AUDIO_DTS_HD -> "DTS-HD"
             MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_DTS_EXPRESS -> "DTS"
-            MimeTypes.AUDIO_AAC -> "AAC"
+            MimeTypes.AUDIO_AAC -> when (audio.codecs) {
+                "mp4a.40.5" -> "HE-AAC"
+                "mp4a.40.29" -> "HE-AAC v2"
+                else -> "AAC"
+            }
             MimeTypes.AUDIO_FLAC -> "FLAC"
             MimeTypes.AUDIO_OPUS -> "OPUS"
             else -> null

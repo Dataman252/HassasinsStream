@@ -92,7 +92,7 @@ private fun DetailPage(backdrop: String?, onBack: () -> Unit, content: LazyListS
 }
 
 @Composable
-private fun TitleHeader(info: TitleInfo) {
+private fun TitleHeader(info: TitleInfo, badges: List<String> = emptyList()) {
     val tv = LocalIsTv.current
     val bannerHeight = if (tv) 380.dp else 300.dp
     val posterWidth = if (tv) 210.dp else 124.dp
@@ -140,6 +140,8 @@ private fun TitleHeader(info: TitleInfo) {
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(metaLine(info), color = Color(0xFFCBD5E1), style = MaterialTheme.typography.bodyMedium)
+                    // The file's format, up top with the title: resolution, codec, HDR and sound.
+                    if (badges.isNotEmpty()) BadgeRow(badges, onDark = true)
                 }
             }
         }
@@ -173,8 +175,7 @@ fun MovieDetailScreen(vm: AppViewModel, screen: Screen.MovieDetail) {
 
     LaunchedEffect(item.info.key) { vm.showArt(item.info) }
     DetailPage(item.info.backdrop, vm::back) {
-        item { TitleHeader(item.info) }
-        item { best.entry.media?.let { BadgeRow(it.badges()) } }
+        item { TitleHeader(item.info, best.entry.media?.badges().orEmpty()) }
         item { PlayabilityBlock(vm, best) }
         item {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

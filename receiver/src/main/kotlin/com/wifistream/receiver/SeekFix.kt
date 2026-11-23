@@ -19,7 +19,7 @@ import okhttp3.Request
  * to a second table at the end, and that second one points to the index. The player reads only
  * the first table, finds no index, and treats the file as unseekable.
  *
- * The fix: follow the chain once, then, as the file streams past, rewrite the first table's
+ * The fix: follow the chain (one or more hops) to the index, then, as the file streams past, rewrite the first table's
  * pointer so it names the index directly. The entry is overwritten in place with one of the same
  * length, so nothing else in the file moves.
  */
@@ -90,17 +90,26 @@ object MkvSeekFix {
         if (entries.any { it.id == ID_CUES }) return null // already points at the index: nothing to fix
         val link = entries.firstOrNull { it.id == ID_SEEK_HEAD } ?: return null
 
-        val second = fetch(url, segmentStart + link.position, 16_384) ?: return null
-        val tail = Reader(second, 0)
-        if (tail.id() != ID_SEEK_HEAD) return null
-        val tailSize = tail.size() ?: return null
-        val cues = seekEntries(second, tail.pos, minOf(second.size.toLong(), tail.pos + tailSize).toInt())
-            .firstOrNull { it.id == ID_CUES }?.position ?: return null
+        // Follow the chain of tables (some files have two or three hops) until one names the index.
+        var next = link.position
+        var cues: Long? = null
+        val seen = HashSet<Long>()
+        repeat(5) {
+            if (cues != null || !seen.add(next)) return@repeat
+            val table = fetch(url, segmentStart + next, 16_384) ?: return null
+            val tail = Reader(table, 0)
+            if (tail.id() != ID_SEEK_HEAD) return null
+            val tailSize = tail.size() ?: return null
+            val found = seekEntries(table, tail.pos, minOf(table.size.toLong(), tail.pos + tailSize).toInt())
+            cues = found.firstOrNull { it.id == ID_CUES }?.position
+            next = found.firstOrNull { it.id == ID_SEEK_HEAD }?.position ?: return@repeat
+        }
+        val cuesAt = cues ?: return null
         // The new position has to fit in the bytes the old one occupied.
-        if (link.positionWidth < 8 && cues >= (1L shl (8 * link.positionWidth))) return null
+        if (link.positionWidth < 8 && cuesAt >= (1L shl (8 * link.positionWidth))) return null
 
         val idBytes = byteArrayOf(0x1C, 0x53, 0xBB.toByte(), 0x6B)
-        val positionBytes = ByteArray(link.positionWidth) { i -> (cues ushr (8 * (link.positionWidth - 1 - i))).toByte() }
+        val positionBytes = ByteArray(link.positionWidth) { i -> (cuesAt ushr (8 * (link.positionWidth - 1 - i))).toByte() }
         return Patch(listOf(link.idOffset.toLong() to idBytes, link.positionOffset.toLong() to positionBytes))
     }
 

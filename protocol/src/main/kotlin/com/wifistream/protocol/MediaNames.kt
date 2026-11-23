@@ -1,10 +1,13 @@
 package com.wifistream.protocol
 
 private val VIDEO_EXT = setOf(
-    "mkv", "mp4", "m4v", "mov", "avi", "webm", "ts", "m2ts", "mpg", "mpeg", "wmv", "flv", "3gp",
+    "mkv", "mp4", "m4v", "mov", "avi", "webm", "ts", "m2ts", "mts", "m2t", "mpg", "mpeg", "mpe", "m1v", "m2v",
+    "wmv", "asf", "flv", "f4v", "3gp", "3g2", "vob", "divx", "xvid", "ogv", "ogm", "rm", "rmvb", "mxf", "wtv",
+    "dvr-ms", "nut", "evo", "amv", "y4m", "qt", "hevc", "h264", "h265", "av1", "ivf", "mjpeg", "mjpg",
 )
 private val AUDIO_EXT = setOf(
-    "mp3", "flac", "m4a", "aac", "ogg", "opus", "wav", "wma", "alac", "aiff", "ape", "mka",
+    "mp3", "flac", "m4a", "m4b", "aac", "ogg", "oga", "opus", "wav", "wma", "alac", "aiff", "aif", "ape", "mka",
+    "ac3", "eac3", "dts", "thd", "truehd", "mlp", "wv", "tta", "dsf", "dff", "amr", "awb", "mpc", "spx", "caf", "au",
 )
 private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic")
 private val SUBTITLE_EXT = setOf("srt", "ass", "ssa", "vtt", "sub")

@@ -244,6 +244,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             var knownDevice = ""
             var knownRoots = emptySet<String>()
             var knownStamp = 0L
+            var keyBeats = 0
             while (true) {
                 delay(3_000)
                 val current = connection ?: continue
@@ -264,6 +265,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     continue
                 }
                 misses = 0
+                // The phone checks its keys when sharing starts; until it is online that reads "checking" or
+                // "offline". Ask again until it settles, then fetch the posters that were missing.
+                val keyState = remoteKeys?.tmdb
+                keyBeats++
+                if ((keyState == null || keyState == KeyState.CHECKING || keyState == KeyState.OFFLINE) && keyBeats % 5 == 0) {
+                    val fresh = runCatching { current.client.keyStatus(recheck = keyState == KeyState.OFFLINE) }.getOrNull()
+                    if (fresh != null) {
+                        remoteKeys = fresh
+                        if (fresh.tmdb == KeyState.ACTIVE && keyState != KeyState.ACTIVE) refreshLibrary(rematch = true)
+                    }
+                }
                 val wasLost = linkState == LinkState.LOST
                 val wasMissing = linkState == LinkState.DRIVE_MISSING
                 val before = current.info.roots.map { it.id }.toSet()
@@ -807,6 +819,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         const val KEY_WIDE_CARDS = "wide_cards"
 
         /** Containers the main player cannot open at all. */
-        val COMPAT_ONLY = setOf("wmv", "asf", "rm", "rmvb", "vob", "divx", "ogm")
+        /**
+         * Containers the main player cannot play or cannot seek in; the compatibility engine (VLC) plays
+         * them from the start. Blu-ray .m2ts/.mts use 192-byte packets, FLV has no seek index, OGV is Theora.
+         */
+        val COMPAT_ONLY = setOf(
+            "wmv", "asf", "rm", "rmvb", "vob", "divx", "xvid", "ogm", "ogv", "m2ts", "mts", "m2t", "flv", "f4v",
+            "wtv", "dvr-ms", "mxf", "nut", "rec", "dav", "y4m", "evo", "3g2", "amv",
+        )
     }
 }
