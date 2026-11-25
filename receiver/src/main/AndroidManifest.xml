@@ -60,6 +60,18 @@
             android:screenOrientation="landscape"
             android:exported="true" />
 
+        <activity
+            android:name=".UsbDacProbeActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".UsbDacTestActivity"
+            android:exported="true" />
+
+        <activity
+            android:name=".UsbSinkTestActivity"
+            android:exported="true" />
+
         <activity-alias
             android:name=".IconClassic"
             android:enabled="true"
@@ -125,6 +137,27 @@
             android:name="com.wifistream.sender.ShareService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+        <!-- Takes Android's "open with" offer when a USB DAC is plugged in, which grants USB access. -->
+        <activity
+            android:name=".UsbAttachActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_audio_devices" />
+        </activity>
+
+        <!-- Keeps direct USB DAC playback from being frozen when the screen turns off. -->
+        <service
+            android:name=".UsbKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
             <!-- Keeps music playing with the screen off, with controls on the lock screen. -->
         <service
             android:name=".PlaybackService"

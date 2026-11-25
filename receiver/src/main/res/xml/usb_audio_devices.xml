@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- USB DACs: devices with a USB Audio class interface. Plugging one in lets Android offer this app,
+     and choosing it (with "Always") grants USB access on every plug-in without asking again. -->
+<resources>
+    <usb-device class="1" />
+</resources>

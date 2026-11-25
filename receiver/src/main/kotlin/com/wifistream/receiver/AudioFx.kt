@@ -537,6 +537,8 @@ class AppRenderersFactory(
     dvAsHdr10: Boolean,
     private val audioOffsetUs: AtomicLong,
     private val engine: SoundProcessor,
+    /** Direct USB DAC output settings; null keeps Android's output only. */
+    private val usbOutput: (() -> UsbOutputSettings)? = null,
 ) : DefaultRenderersFactory(context) {
 
     init {
@@ -560,7 +562,8 @@ class AppRenderersFactory(
         // Telling the sink the output only takes plain PCM makes every format get decoded on this device.
         @Suppress("DEPRECATION")
         if (!passthrough) builder.setAudioCapabilities(AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
-        return builder.build()
+        val android = builder.build()
+        return usbOutput?.let { UsbAudioSink(context, android, engine, it) } ?: android
     }
 
     override fun buildAudioRenderers(

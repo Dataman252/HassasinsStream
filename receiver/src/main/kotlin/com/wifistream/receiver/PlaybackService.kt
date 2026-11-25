@@ -15,6 +15,8 @@ object PlayerSession {
     /** True while a video plays on a phone, so leaving the app can shrink it into a floating window. */
     @Volatile
     var pipAllowed = false
+    /** Until this time (ms), leaving the player does not shrink it into a window (Android's USB prompt). */
+    @Volatile var noPipUntil = 0L
     var pipAspect: Rational = Rational(16, 9)
 
     /** True while the app is shown as a small floating window. */

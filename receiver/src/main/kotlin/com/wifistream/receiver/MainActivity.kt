@@ -46,8 +46,15 @@ class MainActivity : ComponentActivity() {
     // Leaving the app while a video plays on a phone shrinks it into a small floating window.
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (PlayerSession.pipAllowed) enterPip()
+        if (PlayerSession.pipAllowed && System.currentTimeMillis() > PlayerSession.noPipUntil && !usbOfferComing()) enterPip()
     }
+
+    /** A USB DAC is plugged in that the app has no access to yet: Android's offer or prompt is what covers the player. */
+    private fun usbOfferComing(): Boolean = runCatching {
+        val usb = getSystemService(USB_SERVICE) as android.hardware.usb.UsbManager
+        val dac = UsbDacProbe.findDac(usb)
+        dac != null && !usb.hasPermission(dac)
+    }.getOrDefault(false)
 
     fun enterPip() {
         runCatching {

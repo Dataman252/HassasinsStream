@@ -112,7 +112,7 @@ import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private enum class PlayerPanel { TRACKS, AUDIO, EQUALIZER, TONE, CHANNELS, DYNAMICS, CONVOLUTION, SUBTITLES, SUBTITLE_SEARCH, PICTURE, SPEED, SLEEP, EPISODES, CHAPTERS, MORE }
+private enum class PlayerPanel { TRACKS, AUDIO, EQUALIZER, TONE, CHANNELS, DYNAMICS, CONVOLUTION, SUBTITLES, SUBTITLE_SEARCH, PICTURE, SPEED, SLEEP, EPISODES, CHAPTERS, MORE, OUTPUT }
 
 private val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 private val SLEEP_MINUTES = listOf(0, 15, 30, 45, 60, 90)
@@ -200,6 +200,20 @@ fun PlayerScreen(
     // Which band the equalizer's controls are editing.
     var eqBand by remember { mutableIntStateOf(0) }
     var passthrough by remember { mutableStateOf(store.passthrough) }
+    var usbDirect by remember { mutableStateOf(store.usbOutput.enabled) }
+    var usbKeepSound by remember { mutableStateOf(store.usbOutput.keepSound) }
+    var usbVolume by remember { mutableStateOf(store.usbOutput.volumeDb) }
+    var usbMax by remember { mutableStateOf(store.usbOutput.maxDb) }
+    // Rebuilds the player when USB access is granted, so direct output starts without leaving the film.
+    var usbEpoch by remember { mutableIntStateOf(0) }
+    var usbDac by remember { mutableStateOf<android.hardware.usb.UsbDevice?>(null) }
+    var usbAllowed by remember { mutableStateOf(false) }
+    var usbPath by remember { mutableStateOf("") }
+    // After leaving direct output, Android needs a moment to take the DAC back; the player waits for it.
+    var waitForAndroidDac by remember { mutableStateOf(false) }
+    // Set when "Allow USB access" is tapped: once Android grants it, the sound moves to the DAC at once,
+    // because Android's own USB sound plays slow and choppy from the moment access is granted.
+    var usbAskedAccess by remember { mutableStateOf(false) }
     val engine = remember { SoundProcessor() }
 
     // Pinch zoom: how much larger than the screen the picture is drawn, and how far it is dragged off-centre.
@@ -209,6 +223,18 @@ fun PlayerScreen(
 
     // The position being chosen on the seek bar, before playback jumps there.
     var scrubMs by remember { mutableStateOf<Long?>(null) }
+    // After a jump the bar stays where it was let go until the player has really arrived there,
+    // so it never flicks back to the old spot (or a nearby keyframe) for a moment.
+    var heldMs by remember { mutableStateOf<Long?>(null) }
+    var heldSince by remember { mutableLongStateOf(0L) }
+    // Double-tap jumps: each tap adds 10 s; the jump happens once the taps stop.
+    var tapJumpMs by remember { mutableLongStateOf(0L) }
+    var tapJumpBase by remember { mutableLongStateOf(0L) }
+    var tapJumpRight by remember { mutableStateOf(true) }
+    var tapJumpUntil by remember { mutableLongStateOf(0L) }
+    var tapJumpCount by remember { mutableIntStateOf(0) }
+    // The running total, shown on the side that was tapped (the middle is the play button).
+    var tapLabel by remember { mutableStateOf<String?>(null) }
     // The last seek-bar picture that finished loading, shown while the next one loads.
     var shownFrame by remember { mutableStateOf<String?>(null) }
     var scrubByKeys by remember { mutableStateOf(false) }
@@ -241,6 +267,8 @@ fun PlayerScreen(
     var dvAsHdr10 by remember { mutableStateOf(store.dvAsHdr10) }
     // Where to pick up when the player is rebuilt (decoder or passthrough change): item index and position.
     var restart by remember { mutableStateOf<Pair<Int, Long>?>(null) }
+    // A rebuild keeps the film paused if it was paused (switching output must not start it).
+    var restartPlaying by remember { mutableStateOf(true) }
 
     // Picture adjustments: remembered per show or film, or for all videos. The GPU effect is only
     // attached while something is changed, and never to HDR or Dolby Vision (they go to the TV untouched).
@@ -255,8 +283,8 @@ fun PlayerScreen(
     // One sound session for the whole screen, so the equalizer stays attached when the player is rebuilt.
     val sessionId = remember { (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).generateAudioSessionId() }
 
-    val player = remember(dvAsHdr10, passthrough, fxActive) {
-        ExoPlayer.Builder(context, AppRenderersFactory(context, passthrough, dvAsHdr10, soundOffsetUs, engine))
+    val player = remember(dvAsHdr10, passthrough, fxActive, usbDirect, usbKeepSound, usbEpoch) {
+        ExoPlayer.Builder(context, AppRenderersFactory(context, passthrough, dvAsHdr10, soundOffsetUs, engine) { store.usbOutput })
             .setLoadControl(roomyLoadControl())
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(
@@ -294,7 +322,7 @@ fun PlayerScreen(
                     .build()
                 prepare()
                 // Waits for the resume question on the first start; rebuilds carry straight on.
-                playWhenReady = restart != null || !resumeAsk
+                playWhenReady = (if (restart != null) restartPlaying else !resumeAsk) && !waitForAndroidDac
             }
     }
 
@@ -339,6 +367,7 @@ fun PlayerScreen(
     /** Rebuilds the player where it stands, for changes that need different decoders. */
     fun rebuild(change: () -> Unit) {
         saveProgress()
+        restartPlaying = player.playWhenReady
         restart = player.currentMediaItemIndex to player.currentPosition
         change()
     }
@@ -353,14 +382,35 @@ fun PlayerScreen(
         if (player.isPlaying) player.pause() else player.play()
     }
 
+    /** An exact jump; the bar stays on [to] until the player gets there. */
+    fun jumpTo(to: Long) {
+        val target = to.coerceIn(0, durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE)
+        player.setSeekParameters(androidx.media3.exoplayer.SeekParameters.EXACT)
+        player.seekTo(target)
+        positionMs = target
+        heldMs = target
+        heldSince = System.currentTimeMillis()
+    }
+
     fun commitScrub() {
-        scrubMs?.let {
-            // The final jump is exact; live previews while dragging used the nearest keyframe.
-            player.setSeekParameters(androidx.media3.exoplayer.SeekParameters.EXACT)
-            player.seekTo(it)
-            positionMs = it
-        }
+        // The final jump is exact; live previews while dragging used the nearest keyframe.
+        scrubMs?.let { jumpTo(it) }
         scrubMs = null
+    }
+
+    /** One more double-tap step (10 s) on a side; a new side starts a new tally. */
+    fun tapJump(right: Boolean, taps: Int) {
+        val now = System.currentTimeMillis()
+        if (now > tapJumpUntil || right != tapJumpRight) {
+            tapJumpMs = 0
+            tapJumpBase = heldMs ?: player.currentPosition
+            tapJumpRight = right
+        }
+        tapJumpMs += 10_000L * taps
+        tapJumpUntil = now + 1000
+        tapJumpCount++
+        tapLabel = if (right) "+${tapJumpMs / 1000} s  »" else "«  −${tapJumpMs / 1000} s"
+        activity++
     }
 
     fun setSound(new: SoundSettings) {
@@ -456,6 +506,7 @@ fun PlayerScreen(
     /** Hands this video to the compatibility engine at the same spot. */
     fun useCompat(reason: String, atMs: Long = player.currentPosition) {
         if (switched) return
+        android.util.Log.i("PlayerCompat", "to compatibility engine at $atMs ms: $reason (USB direct ${UsbLive.active}, lost ${UsbLive.lost})")
         switched = true
         saveProgress()
         onCompat(Screen.CompatPlayer(screen.items, player.currentMediaItemIndex.coerceAtLeast(0), atMs, reason))
@@ -792,11 +843,28 @@ fun PlayerScreen(
         }
     }
 
+    LaunchedEffect(tapJumpCount) {
+        if (tapJumpCount == 0) return@LaunchedEffect
+        kotlinx.coroutines.delay(1020)
+        if (System.currentTimeMillis() >= tapJumpUntil && tapJumpMs > 0) {
+            jumpTo(tapJumpBase + if (tapJumpRight) tapJumpMs else -tapJumpMs)
+            tapJumpMs = 0
+            kotlinx.coroutines.delay(600)
+            tapLabel = null
+        }
+    }
+
     // Keep the on-screen numbers current, and remember the position so a power cut loses only seconds.
     LaunchedEffect(player) {
         var beats = 0
         while (true) {
-            positionMs = player.currentPosition
+            val held = heldMs
+            positionMs = if (held != null && abs(player.currentPosition - held) > 400 && System.currentTimeMillis() - heldSince < 3000) {
+                held
+            } else {
+                heldMs = null
+                player.currentPosition
+            }
             durationMs = player.duration.coerceAtLeast(0)
             bufferedMs = player.bufferedPosition
             val from = repeatFrom
@@ -823,7 +891,10 @@ fun PlayerScreen(
 
     // Leaving the app (Home button, phone call) pauses a video instead of playing on unseen. Music carries on.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
-        if (!audioOnly) player.pause()
+        // Android's USB chooser or prompt covering the player is not leaving the app: keep playing.
+        val usbManager = context.getSystemService(Context.USB_SERVICE) as android.hardware.usb.UsbManager
+        val usbOffer = UsbDacProbe.findDac(usbManager)?.let { !usbManager.hasPermission(it) } == true
+        if (!audioOnly && !usbOffer) player.pause()
         saveProgress()
         store.flush()
     }
@@ -836,6 +907,10 @@ fun PlayerScreen(
         // Films are wide: video turns a phone's screen on its side (either way up). Music leaves it alone.
         val host = context as? Activity
         if (!audioOnly) host?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // The brightness last set by swiping in the player comes back for the next film.
+        store.playerBrightness.takeIf { it >= 0f }?.let { saved ->
+            window?.let { it.attributes = it.attributes.apply { screenBrightness = saved } }
+        }
         onDispose {
             host?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             bars?.show(WindowInsetsCompat.Type.systemBars())
@@ -935,12 +1010,82 @@ fun PlayerScreen(
         if (panel == null) runCatching { if (controls) playFocus.requestFocus() else screenFocus.requestFocus() }
     }
 
+    /** Sets the DAC's own volume (dB), kept under the max. */
+    fun setDacVolume(db: Double) {
+        val range = UsbLive.session?.volumeRange
+        val v = db.coerceIn(range?.first ?: -74.0, minOf(usbMax, range?.second ?: 0.0))
+        usbVolume = v
+        store.setUsbVolume(v)
+        UsbLive.session?.setVolumeDb(v)
+        hint = "DAC volume ${"%.1f".format(v)} dB"
+    }
+
+    LaunchedEffect(player, waitForAndroidDac) {
+        if (!waitForAndroidDac) return@LaunchedEffect
+        hint = "Handing the DAC back to Android…"
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        fun usbOut() = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+            it.type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET || it.type == android.media.AudioDeviceInfo.TYPE_USB_DEVICE
+        }
+        val until = System.currentTimeMillis() + 5000
+        while (!usbOut() && System.currentTimeMillis() < until) kotlinx.coroutines.delay(100)
+        // Android lists the DAC a little before its audio path is ready.
+        kotlinx.coroutines.delay(600)
+        waitForAndroidDac = false
+        hint = if (usbOut()) "Back on Android's output" else "Android has not taken the DAC back; playing on"
+        player.play()
+    }
+
+    // Auto output: a USB DAC that is plugged in and allowed gets the sound directly (bit-perfect);
+    // unplugged, the sound goes back to Android's normal output at the same spot, without an error.
+    var usbTries by remember { mutableIntStateOf(0) }
+    val playerBorn = remember(player) { android.os.SystemClock.elapsedRealtime() }
+    LaunchedEffect(player) {
+        val usbManager = context.getSystemService(Context.USB_SERVICE) as android.hardware.usb.UsbManager
+        while (true) {
+            val dac = UsbDacProbe.findDac(usbManager)
+            val allowed = dac != null && usbManager.hasPermission(dac)
+            if (allowed && !usbAllowed) PlayerSession.noPipUntil = 0
+            usbDac = dac
+            usbAllowed = allowed
+            usbPath = if (UsbLive.active) UsbLive.path else ""
+            if (dac == null) usbTries = 0
+            // Direct output belongs to this player only if it started after this player was built
+            // (a film switch can briefly overlap with the previous player still holding the DAC).
+            val mine = UsbLive.active && UsbLive.activatedAt >= playerBorn
+            // Only once the film is really playing: a rebuild while it is still starting (before it has
+            // jumped to the resume point) looks like a file that cannot seek and goes to the compatibility engine.
+            // A player that starts with the DAC already allowed goes direct by itself, with no rebuild.
+            val busy = player.playbackState != Player.STATE_READY || waitForAndroidDac
+            when {
+                UsbLive.lost || (mine && dac == null) -> {
+                    UsbLive.lost = false
+                    hint = "DAC unplugged: back to normal sound"
+                    rebuild { usbEpoch++ }
+                }
+                (usbDirect || usbAskedAccess) && allowed && !mine && UsbLive.session == null && !busy && usbTries < 2 -> {
+                    // At most twice per film: if the DAC refuses this file, the sound stays on Android's output.
+                    usbTries++
+                    if (usbAskedAccess) {
+                        usbAskedAccess = false
+                        store.setUsbDirect(true)
+                        usbDirect = true
+                    }
+                    hint = "Playing direct to ${dac?.productName ?: "the USB DAC"}"
+                    rebuild { usbEpoch++ }
+                }
+            }
+            kotlinx.coroutines.delay(700)
+        }
+    }
+
     // Back peels away one layer at a time: an open panel, then the controls, then the player itself.
     fun goBack() {
         when {
             panel == PlayerPanel.SUBTITLE_SEARCH -> panel = PlayerPanel.SUBTITLES
             panel == PlayerPanel.EQUALIZER || panel == PlayerPanel.TONE ||
-                panel == PlayerPanel.CHANNELS || panel == PlayerPanel.DYNAMICS || panel == PlayerPanel.CONVOLUTION -> panel = PlayerPanel.AUDIO
+                panel == PlayerPanel.CHANNELS || panel == PlayerPanel.DYNAMICS || panel == PlayerPanel.CONVOLUTION ||
+                panel == PlayerPanel.OUTPUT -> panel = PlayerPanel.AUDIO
             panel == PlayerPanel.SUBTITLES -> panel = PlayerPanel.TRACKS
             panel == PlayerPanel.SLEEP -> panel = PlayerPanel.MORE
             panel != null -> panel = null
@@ -999,7 +1144,11 @@ fun PlayerScreen(
             .onPreviewKeyEvent { event ->
                 val code = event.nativeKeyEvent.keyCode
                 val center = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
-                if (code == KeyEvent.KEYCODE_BACK) {
+                if ((code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN) && UsbLive.active) {
+                    // Direct output: the phone's volume keys move the DAC's own volume, 1 dB a press.
+                    if (event.type == KeyEventType.KeyDown) setDacVolume(usbVolume + if (code == KeyEvent.KEYCODE_VOLUME_UP) 1.0 else -1.0)
+                    true
+                } else if (code == KeyEvent.KEYCODE_BACK) {
                     // Taken here, before the focus system, which would otherwise spend Back on
                     // moving focus off the buttons instead of closing what is open.
                     if (event.type == KeyEventType.KeyUp) goBack()
@@ -1020,11 +1169,18 @@ fun PlayerScreen(
             }
             .focusRequester(screenFocus)
             .focusable()
-            .pointerInput(Unit) {
+            .pointerInput(player) {  // re-created with the player, so taps act on the current one
                 detectTapGestures(
-                    onTap = {
+                    onTap = { offset ->
                         activity++
-                        if (panel != null) panel = null else if (!resumeAsk) controls = !controls
+                        val side = when {
+                            offset.x < size.width / 3 -> false
+                            offset.x > size.width * 2 / 3 -> true
+                            else -> null
+                        }
+                        // A tap right after a double-tap on the same side adds another 10 s.
+                        if (side != null && side == tapJumpRight && System.currentTimeMillis() < tapJumpUntil) tapJump(side, 1)
+                        else if (panel != null) panel = null else if (!resumeAsk) controls = !controls
                     },
                     // Hold a finger down for double speed; let go to return to the chosen speed.
                     onLongPress = {
@@ -1043,15 +1199,19 @@ fun PlayerScreen(
                     },
                     // Double-tap the left or right third to skip, the middle to pause.
                     onDoubleTap = { offset ->
+                        // Two more quick taps during a tally can arrive as a second double-tap: count both.
+                        val more = if (System.currentTimeMillis() < tapJumpUntil) 2 else 1
                         when {
-                            offset.x < size.width / 3 -> skip(false)
-                            offset.x > size.width * 2 / 3 -> skip(true)
+                            offset.x < size.width / 3 && !(more == 2 && tapJumpRight) -> tapJump(false, more)
+                            offset.x > size.width * 2 / 3 && !(more == 2 && !tapJumpRight) -> tapJump(true, more)
+                            offset.x < size.width / 3 -> tapJump(false, 1)
+                            offset.x > size.width * 2 / 3 -> tapJump(true, 1)
                             else -> togglePlay()
                         }
                     },
                 )
             }
-            .pointerInput(isTv) {
+            .pointerInput(isTv, player) {
                 if (isTv) return@pointerInput
                 // Phones. Sideways: seek, with a picture of where you will land. Up and down: volume on the
                 // right half, brightness on the left. The first clear movement decides which it is.
@@ -1086,7 +1246,10 @@ fun PlayerScreen(
                     if (abs(travelled) < 40f) return@detectDragGestures
                     val up = travelled < 0
                     travelled = 0f
-                    if (rightSide) {
+                    if (rightSide && UsbLive.active) {
+                        // Direct output: Android's volume does nothing, so the swipe moves the DAC's own volume.
+                        setDacVolume(usbVolume + if (up) 1.0 else -1.0)
+                    } else if (rightSide) {
                         val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
                         audio.adjustStreamVolume(
                             AudioManager.STREAM_MUSIC,
@@ -1099,6 +1262,7 @@ fun PlayerScreen(
                         val current = window.attributes.screenBrightness.takeIf { it >= 0 } ?: 0.5f
                         val next = (current + if (up) 0.06f else -0.06f).coerceIn(0.02f, 1f)
                         window.attributes = window.attributes.apply { screenBrightness = next }
+                        store.setPlayerBrightness(next)
                         hint = "Brightness ${(next * 100).toInt()}%"
                     }
                 }
@@ -1334,6 +1498,22 @@ fun PlayerScreen(
                 remember(tick) { infoLines(player, stats, view.display, fileName) },
                 Modifier.align(Alignment.TopStart).padding(start = screenMargin(), top = 72.dp, end = screenMargin()),
             )
+        }
+
+        if (!inPip) tapLabel?.let { label ->
+            Box(
+                Modifier.fillMaxSize().padding(horizontal = 96.dp),
+                contentAlignment = if (tapJumpRight) Alignment.CenterEnd else Alignment.CenterStart,
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .background(Color(0xB3000000), RoundedCornerShape(28.dp))
+                        .padding(horizontal = 22.dp, vertical = 12.dp),
+                )
+            }
         }
 
         if (!inPip) hint?.let {
@@ -1700,6 +1880,16 @@ fun PlayerScreen(
                         store.setPassthrough(turnOn)
                         rebuild { passthrough = turnOn }
                     })
+                    add(ChoiceRow(
+                        "Output",
+                        when {
+                            usbPath.isNotEmpty() -> "Direct: $usbPath"
+                            usbDirect && usbDac == null -> "Auto: normal sound until a USB DAC is plugged in"
+                            usbDirect && !usbAllowed -> "Auto: the USB DAC needs access"
+                            usbDirect -> "Auto: starting the USB DAC…"
+                            else -> "Always Android"
+                        },
+                    ) { panel = PlayerPanel.OUTPUT })
                 }
 
                 PlayerPanel.EQUALIZER -> equalizerItems(soundUi)
@@ -1707,6 +1897,80 @@ fun PlayerScreen(
                 PlayerPanel.CHANNELS -> channelItems(soundUi)
                 PlayerPanel.DYNAMICS -> dynamicsItems(soundUi)
                 PlayerPanel.CONVOLUTION -> convolutionItems(soundUi)
+                PlayerPanel.OUTPUT -> buildList {
+                    val dac = usbDac
+                    add(NoteRow(
+                        if (dac == null) "No USB DAC plugged in: normal sound. With Auto, plugging one in moves the sound to it, bit-perfect."
+                        else "${listOfNotNull(dac.manufacturerName, dac.productName).joinToString(" ")}: " +
+                            if (usbAllowed) "ready." else "the app needs USB access first.",
+                    ))
+                    if (dac != null && !usbAllowed) add(ChoiceRow("Allow USB access", "Android asks once. Tick “Always” if it offers.") {
+                        val usbManager = context.getSystemService(Context.USB_SERVICE) as android.hardware.usb.UsbManager
+                        val pi = android.app.PendingIntent.getBroadcast(
+                            context, 0, android.content.Intent("com.wifistream.receiver.USB_OUTPUT_PERMISSION").setPackage(context.packageName),
+                            android.app.PendingIntent.FLAG_IMMUTABLE,
+                        )
+                        usbAskedAccess = true
+                        // Android's prompt covers the player; that must not shrink it into a window.
+                        PlayerSession.noPipUntil = System.currentTimeMillis() + 60_000
+                        usbManager.requestPermission(dac, pi)
+                    })
+                    add(ChipsRow("Output", listOf("Always Android", "Auto: direct when plugged in"), if (usbDirect) 1 else 0) { i ->
+                        val on = i == 1
+                        if (on != usbDirect) {
+                            store.setUsbDirect(on)
+                            // Leaving direct output: start again only once Android has the DAC back,
+                            // or the sound opens on the wrong output and the picture stalls behind it.
+                            if (!on && UsbLive.active) waitForAndroidDac = true
+                            rebuild { usbDirect = on }
+                        }
+                    })
+                    if (usbDirect) {
+                        add(ToggleRow(
+                            "Keep my sound settings",
+                            if (usbKeepSound) "On: EQ, tone and quick sound still apply (16-bit)." else "Off: pure signal, every bit of the file.",
+                            on = usbKeepSound,
+                        ) { turnOn ->
+                            store.setUsbKeepSound(turnOn)
+                            rebuild { usbKeepSound = turnOn }
+                        })
+                        if (usbPath.isNotEmpty()) add(NoteRow(
+                            "Now: $usbPath, " + if (UsbLive.untouched) "untouched (bit-perfect)." else "${UsbLive.change}.",
+                        ))
+                        val low = UsbLive.session?.volumeRange?.first ?: -74.0
+                        add(StepperRow(
+                            "Volume",
+                            "${"%.1f".format(usbVolume)} dB",
+                            fraction = ((usbVolume - low) / (usbMax - low)).toFloat().coerceIn(0f, 1f),
+                            detail = "The DAC's own volume. Phone volume keys change it while direct output plays.",
+                            onSet = { f -> setDacVolume(low + Math.round((usbMax - low) * f * 2) / 2.0) },
+                            onReset = { setDacVolume(-30.0) },
+                            changed = usbVolume != -30.0,
+                        ) { setDacVolume(usbVolume + it * 0.5) })
+                        add(StepperRow(
+                            "Max volume",
+                            "${"%.0f".format(usbMax)} dB",
+                            fraction = ((usbMax + 40) / 40).toFloat().coerceIn(0f, 1f),
+                            detail = "Safety cap for sensitive earphones.",
+                            onSet = { f ->
+                                usbMax = (-40 + Math.round(40 * f)).toDouble()
+                                store.setUsbMax(usbMax)
+                                if (usbVolume > usbMax) setDacVolume(usbMax)
+                            },
+                            onReset = {
+                                usbMax = -10.0
+                                store.setUsbMax(-10.0)
+                                if (usbVolume > usbMax) setDacVolume(usbMax)
+                            },
+                            changed = usbMax != -10.0,
+                        ) {
+                            usbMax = (usbMax + it).coerceIn(-40.0, 0.0)
+                            store.setUsbMax(usbMax)
+                            if (usbVolume > usbMax) setDacVolume(usbMax)
+                        })
+                        add(NoteRow("Direct output plays at normal speed: changing speed would mean resampling."))
+                    }
+                }
 
                 PlayerPanel.SUBTITLES -> buildList {
                     if (builtInIsPicture && externalCues == null) {
@@ -2002,6 +2266,7 @@ fun PlayerScreen(
                     PlayerPanel.CHANNELS -> "Channels and headphones"
                     PlayerPanel.DYNAMICS -> "Loudness and dynamics"
                     PlayerPanel.CONVOLUTION -> "Convolution"
+                    PlayerPanel.OUTPUT -> "Output"
                     PlayerPanel.SUBTITLES -> "Subtitle look and timing"
                     PlayerPanel.EPISODES -> if (audioOnly) "Tracks" else "Episodes"
                     PlayerPanel.CHAPTERS -> "Chapters"

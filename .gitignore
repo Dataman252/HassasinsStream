@@ -14,3 +14,7 @@ APKs/
 docs/video/*.png
 docs/video/c*.mp4
 docs/video/*.mp4
+
+# Native build output
+.cxx/
+receiver/.cxx/

@@ -39,6 +39,13 @@ private data class StoreData(
     val dvAsHdr10: Boolean = false,
     val matchFrameRate: Boolean = false,
     val passthrough: Boolean = true,
+    /** Direct (bit-perfect) output to a USB DAC, and its settings. */
+    val usbDirect: Boolean = true,
+    val usbKeepSound: Boolean = false,
+    val usbVolumeDb: Double = -30.0,
+    val usbMaxDb: Double = -10.0,
+    /** Screen brightness the player last used (0..1); -1 follows the phone. */
+    val playerBrightness: Float = -1f,
     val boostDb: Int = 0,
     // Older equalizer settings, read once to carry the volume boost over.
     val eqPreset: String = "FLAT",
@@ -98,6 +105,13 @@ class LibraryStore(context: Context, private val scope: CoroutineScope) {
     val dvAsHdr10: Boolean get() = data.dvAsHdr10
     val matchFrameRate: Boolean get() = data.matchFrameRate
     val passthrough: Boolean get() = data.passthrough
+    val usbOutput: UsbOutputSettings get() = UsbOutputSettings(data.usbDirect, data.usbKeepSound, data.usbVolumeDb, data.usbMaxDb)
+    fun setUsbDirect(on: Boolean) = change { copy(usbDirect = on) }
+    fun setUsbKeepSound(on: Boolean) = change { copy(usbKeepSound = on) }
+    fun setUsbVolume(db: Double) = change { copy(usbVolumeDb = db) }
+    fun setUsbMax(db: Double) = change { copy(usbMaxDb = db) }
+    val playerBrightness: Float get() = data.playerBrightness
+    fun setPlayerBrightness(value: Float) = change { copy(playerBrightness = value) }
     val sound: SoundSettings get() = data.sound ?: SoundSettings(boostDb = data.boostDb)
     fun setSound(settings: SoundSettings) = change { copy(sound = settings) }
 
